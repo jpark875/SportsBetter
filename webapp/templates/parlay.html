@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Parlay Analyzer · Value Betting Engine{% endblock %}
+
+{% block content %}
+<h1>Parlay Analyzer</h1>
+<p class="lead">
+  A parlay multiplies your edge <em>and</em> the sportsbook's vig across every
+  leg. This tool prices the parlay against betting the same legs straight, and
+  tells you honestly which is better for steady growth.
+</p>
+
+<section aria-labelledby="form-h" class="panel">
+  <h2 id="form-h">Enter your legs</h2>
+  <p class="muted">For each leg, enter your estimated win probability (0–1) and
+     the offered decimal odds. Use the game ID to flag same-game (correlated) legs.</p>
+  <form method="post" action="{{ url_for('parlay') }}">
+    <table id="legs-table">
+      <caption class="visually-hidden">Parlay legs</caption>
+      <thead>
+        <tr>
+          <th scope="col">Leg name</th>
+          <th scope="col">Win prob (0–1)</th>
+          <th scope="col">Decimal odds</th>
+          <th scope="col">Game ID <span class="muted">(optional)</span></th>
+        </tr>
+      </thead>
+      <tbody id="legs-body">
+        {% for i in range(3) %}
+          <tr>
+            <td><label class="visually-hidden" for="label{{ i }}">Leg {{ i+1 }} name</label>
+              <input id="label{{ i }}" name="label" type="text" placeholder="e.g. Lakers ML"></td>
+            <td><label class="visually-hidden" for="prob{{ i }}">Leg {{ i+1 }} probability</label>
+              <input id="prob{{ i }}" name="prob" type="number" step="0.01" min="0" max="1" placeholder="0.60"></td>
+            <td><label class="visually-hidden" for="odds{{ i }}">Leg {{ i+1 }} decimal odds</label>
+              <input id="odds{{ i }}" name="decimal_odds" type="number" step="0.01" min="1" placeholder="1.80"></td>
+            <td><label class="visually-hidden" for="game{{ i }}">Leg {{ i+1 }} game ID</label>
+              <input id="game{{ i }}" name="game_id" type="text" placeholder="auto"></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" id="add-leg">Add another leg</button>
+      <button type="submit" class="btn">Analyze parlay</button>
+    </div>
+  </form>
+</section>
+
+{% if analysis %}
+  <section aria-labelledby="result-h" class="panel panel-highlight">
+    <h2 id="result-h">Analysis</h2>
+
+    <div class="verdict verdict-{{ analysis.verdict }}">
+      {% if analysis.verdict == 'parlay' %}
+        <strong>Verdict: Parlay is worth it.</strong>
+      {% elif analysis.verdict == 'straight' %}
+        <strong>Verdict: Bet these straight instead.</strong>
+      {% else %}
+        <strong>Verdict: Pass on this parlay.</strong>
+      {% endif %}
+      <p>{{ analysis.recommendation }}</p>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat">
+        <span class="stat-label">Combined win prob</span>
+        <span class="stat-value">{{ '%.1f'|format(analysis.combined_true_prob * 100) }}%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Payout (decimal)</span>
+        <span class="stat-value">{{ '%.2f'|format(analysis.combined_decimal) }}×</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Fair (no-vig) odds</span>
+        <span class="stat-value">{{ '%.2f'|format(analysis.fair_decimal) }}×</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Parlay edge</span>
+        <span class="stat-value {{ 'pos' if analysis.edge > 0 else 'neg' }}">
+          {{ '%+.1f'|format(analysis.edge * 100) }}%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Straight-bet edge (summed)</span>
+        <span class="stat-value {{ 'pos' if analysis.straight_total_edge > 0 else 'neg' }}">
+          {{ '%+.1f'|format(analysis.straight_total_edge * 100) }}%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Max Kelly stake</span>
+        <span class="stat-value">{{ '%.1f'|format(analysis.kelly_fraction * 100) }}%</span>
+      </div>
+    </div>
+
+    {% if analysis.correlated %}
+      <p class="notice">These legs share a game, so they are correlated. The
+        independence math below over- or under-states the true probability —
+        treat this as a warning, not a price.</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Value Betting Engine{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+<p class="lead">
+  Statistically-modelled value bets across your active markets, sized for
+  steady bankroll growth.
+</p>
+
+<section aria-labelledby="profile-h" class="panel">
+  <h2 id="profile-h">Your risk profile</h2>
+  <div class="stat-grid">
+    <div class="stat">
+      <span class="stat-label">Bankroll</span>
+      <span class="stat-value">${{ '%.2f'|format(profile.liquid_bankroll) }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Betting budget</span>
+      <span class="stat-value">${{ '%.2f'|format(profile.disposable_income) }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Volatility tolerance</span>
+      <span class="stat-value">{{ profile.volatility_tolerance }}/10</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Open bets</span>
+      <span class="stat-value">{{ pending_count }}</span>
+    </div>
+  </div>
+  <p><a class="btn btn-secondary" href="{{ url_for('settings') }}">Adjust profile</a></p>
+</section>
+
+<section aria-labelledby="perf-h" class="panel">
+  <h2 id="perf-h">Performance to date</h2>
+  {% if metrics.n_bets == 0 %}
+    <p class="muted">No settled bets yet. Once you record and settle bets, your
+      risk-adjusted performance metrics appear here.</p>
+  {% else %}
+    <div class="stat-grid">
+      <div class="stat">
+        <span class="stat-label">Net profit</span>
+        <span class="stat-value {{ 'pos' if metrics.net_profit >= 0 else 'neg' }}">
+          ${{ '%.2f'|format(metrics.net_profit) }}
+        </span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">ROI</span>
+        <span class="stat-value {{ 'pos' if metrics.roi >= 0 else 'neg' }}">
+          {{ '%.1f'|format(metrics.roi * 100) }}%
+        </span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Win rate</span>
+        <span class="stat-value">{{ '%.0f'|format(metrics.win_rate * 100) }}%
+          <span class="muted">({{ metrics.wins }}–{{ metrics.losses }})</span></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Stability</span>
+        <span class="stat-value grade grade-{{ metrics.stability_grade|lower }}">
+          {{ metrics.stability_grade }}</span>
+      </div>
+    </div>
+    <p><a href="{{ url_for('history') }}">See full risk analysis &rarr;</a></p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="markets-h" class="panel">
+  <h2 id="markets-h">Markets</h2>
+  <ul class="card-grid">
+    {% for s in sports %}
+      <li class="card">
+        <h3>{{ s.name }}</h3>
+        <p class="muted">{{ s.market }} &middot; scored on {{ s.score_label }}</p>
+        {% if s.trained %}
+          <p><span class="pill pill-ok">Model ready</span></p>
+          <a class="btn" href="{{ url_for('slate', sport_key=s.key) }}">
+            View today's value bets</a>
+        {% else %}
+          <p><span class="pill pill-warn">Not trained</span></p>
+          <p class="muted code">python scripts/train_sport.py --sport {{ s.key }}</p>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

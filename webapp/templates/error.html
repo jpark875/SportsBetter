@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Error {{ code }} · Value Betting Engine{% endblock %}
+
+{% block content %}
+<h1>{{ code }}</h1>
+<p class="lead">{{ message }}</p>
+<p><a class="btn" href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+{% endblock %}

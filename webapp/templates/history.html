@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}History &amp; Risk · Value Betting Engine{% endblock %}
+
+{% block content %}
+<h1>History &amp; Risk Analysis</h1>
+
+<section aria-labelledby="metrics-h" class="panel">
+  <h2 id="metrics-h">Risk-adjusted performance</h2>
+  {% if metrics.n_bets == 0 %}
+    <p class="muted">No settled bets yet. Record bets from a slate, then mark them
+      won or lost below to build your performance history.</p>
+  {% else %}
+    <div class="verdict verdict-{{ 'parlay' if metrics.stability_grade in ['Stable','Moderate'] else 'pass' }}">
+      <strong>Stability: {{ metrics.stability_grade }}</strong>
+      <p>{{ metrics.stability_note }}</p>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat">
+        <span class="stat-label">Net profit</span>
+        <span class="stat-value {{ 'pos' if metrics.net_profit >= 0 else 'neg' }}">
+          ${{ '%.2f'|format(metrics.net_profit) }}</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">ROI</span>
+        <span class="stat-value {{ 'pos' if metrics.roi >= 0 else 'neg' }}">
+          {{ '%.1f'|format(metrics.roi * 100) }}%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Record</span>
+        <span class="stat-value">{{ metrics.wins }}–{{ metrics.losses }}
+          <span class="muted">({{ '%.0f'|format(metrics.win_rate * 100) }}%)</span></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label" title="Reward per unit of total volatility">Sharpe</span>
+        <span class="stat-value">{{ '%.2f'|format(metrics.sharpe) }}</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label" title="Reward per unit of downside volatility">Sortino</span>
+        <span class="stat-value">{{ '%.2f'|format(metrics.sortino) }}</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label" title="Largest peak-to-trough bankroll drop">Max drawdown</span>
+        <span class="stat-value neg">{{ '%.1f'|format(metrics.max_drawdown * 100) }}%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label" title="Total return divided by max drawdown">Calmar</span>
+        <span class="stat-value">{{ '%.2f'|format(metrics.calmar) }}</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Total staked</span>
+        <span class="stat-value">${{ '%.2f'|format(metrics.total_staked) }}</span>
+      </div>
+    </div>
+
+    {% if curve|length > 1 %}
+      <h3>Cumulative profit &amp; loss</h3>
+      <div class="chart" role="img"
+           aria-label="Cumulative profit and loss over {{ curve|length - 1 }} settled bets,
+           ending at ${{ '%.2f'|format(metrics.net_profit) }}.">
+        {{ chart_svg(curve) }}
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section aria-labelledby="ledger-h" class="panel">
+  <h2 id="ledger-h">Bet ledger</h2>
+  {% if not bets %}
+    <p class="muted">No bets recorded.</p>
+  {% else %}
+    <div class="table-scroll">
+      <table>
+        <caption class="visually-hidden">All recorded bets</caption>
+        <thead>
+          <tr>
+            <th scope="col">#</th><th scope="col">Sport</th><th scope="col">Matchup</th>
+            <th scope="col">Pick</th><th scope="col">Odds</th><th scope="col">Stake</th>
+            <th scope="col">Status</th><th scope="col">P&amp;L</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bets %}
+            <tr>
+              <td>{{ b.id }}</td>
+              <td>{{ b.sport }}</td>
+              <td>{{ b.matchup }}</td>
+              <td>{{ b.selection }}</td>
+              <td>{{ '%+.0f'|format(b.price) }}</td>
+              <td>${{ '%.2f'|format(b.stake) }}</td>
+              <td><span class="pill pill-{{ b.status }}">{{ b.status }}</span></td>
+              <td class="{{ 'pos' if (b.pnl or 0) > 0 else ('neg' if (b.pnl or 0) < 0 else '') }}">
+                {% if b.pnl is not none %}${{ '%+.2f'|format(b.pnl) }}{% else %}—{% endif %}
+              </td>
+              <td class="actions-cell">
+                {% if b.status == 'pending' %}
+                  <form method="post" action="{{ url_for('settle_bet', bet_id=b.id) }}" class="inline-form">
+                    <button name="status" value="won" class="btn btn-small btn-win">Won</button>
+                    <button name="status" value="lost" class="btn btn-small btn-lose">Lost</button>
+                    <button name="status" value="void" class="btn btn-small btn-secondary">Void</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{{ url_for('delete_bet', bet_id=b.id) }}" class="inline-form">
+                    <button type="submit" class="btn btn-small btn-secondary">Delete</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

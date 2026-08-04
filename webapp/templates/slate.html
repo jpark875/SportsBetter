@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}{{ result.display_name }} · Value Betting Engine{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ result.display_name }}</h1>
+  <a class="btn btn-secondary" href="{{ url_for('slate', sport_key=result.sport_key, refresh=1) }}">
+    Refresh odds</a>
+</div>
+
+{% if result.message %}
+  <div class="notice" role="status">{{ result.message }}</div>
+{% endif %}
+
+{% if not result.trained %}
+  <p class="muted">Train this market's model, then reload this page.</p>
+{% else %}
+
+  {% if arbitrage %}
+    <section aria-labelledby="arb-h" class="panel panel-highlight">
+      <h2 id="arb-h">Arbitrage — guaranteed profit</h2>
+      <p>These games can be bet across books so every outcome locks in a return.</p>
+      {% for a in arbitrage %}
+        <div class="arb">
+          <h3>{{ a.home_team }} vs {{ a.away_team }}</h3>
+          <p><strong>{{ '%.2f'|format(a.profit_pct) }}%</strong> guaranteed
+             (margin {{ '%.4f'|format(a.arb_margin) }}). Split your stake:</p>
+          <table>
+            <caption class="visually-hidden">Arbitrage legs for {{ a.home_team }} vs {{ a.away_team }}</caption>
+            <thead>
+              <tr><th scope="col">Outcome</th><th scope="col">Book</th>
+                  <th scope="col">Odds</th><th scope="col">Stake share</th></tr>
+            </thead>
+            <tbody>
+              {% for leg in a.legs %}
+                <tr>
+                  <td>{{ leg.outcome }}</td>
+                  <td>{{ leg.bookmaker }}</td>
+                  <td>{{ '%+.0f'|format(leg.american) }}</td>
+                  <td>{{ '%.1f'|format(leg.stake_fraction * 100) }}%</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  {% if allocation %}
+    <section aria-labelledby="alloc-h" class="panel panel-highlight">
+      <h2 id="alloc-h">Recommended allocation</h2>
+      <p>Correlation-aware fractional-Kelly stakes for the positive-edge bets on
+         today's board, sized to your risk profile.
+         Portfolio edge: <strong>{{ '%.1f'|format(result.portfolio_edge * 100) }}%</strong>.</p>
+      <div class="table-scroll">
+        <table>
+          <caption class="visually-hidden">Recommended bet allocation</caption>
+          <thead>
+            <tr>
+              <th scope="col">Matchup</th><th scope="col">Pick</th>
+              <th scope="col">Book</th><th scope="col">Odds</th>
+              <th scope="col">Model P</th><th scope="col">Edge</th>
+              <th scope="col">Stake</th><th scope="col"><span class="visually-hidden">Action</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in allocation %}
+              <tr>
+                <td>{{ b.matchup }}</td>
+                <td>{{ b.outcome_name }} <span class="muted">({{ b.selection }})</span></td>
+                <td>{{ b.bookmaker }}</td>
+                <td>{{ '%+.0f'|format(b.price) }}</td>
+                <td>{{ '%.0f'|format(b.true_prob * 100) }}%</td>
+                <td class="pos">{{ '%.1f'|format(b.edge * 100) }}%</td>
+                <td><strong>${{ '%.2f'|format(b.wager_amount) }}</strong></td>
+                <td>
+                  <form method="post" action="{{ url_for('place_bet') }}" class="inline-form">
+                    <input type="hidden" name="sport" value="{{ result.display_name }}">
+                    <input type="hidden" name="matchup" value="{{ b.matchup }}">
+                    <input type="hidden" name="selection" value="{{ b.outcome_name }} ({{ b.selection }})">
+                    <input type="hidden" name="bookmaker" value="{{ b.bookmaker }}">
+                    <input type="hidden" name="price" value="{{ b.price }}">
+                    <input type="hidden" name="stake" value="{{ '%.2f'|format(b.wager_amount) }}">
+                    <input type="hidden" name="model_prob" value="{{ b.true_prob }}">
+                    <input type="hidden" name="edge" value="{{ b.edge }}">
+                    <button type="submit" class="btn btn-small">Track</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if board %}
+    <section aria-labelledby="board-h" class="panel">
+      <h2 id="board-h">Full board</h2>
+      <p class="muted">Every game with model probabilities and the best price per
+         outcome across books. Positive edge is highlighted.</p>
+      {% for game in board %}
+        <div class="game">
+          <h3>{{ game.matchup }}</h3>
+          <div class="table-scroll">
+            <table>
+              <caption class="visually-hidden">Odds for {{ game.matchup }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Outcome</th><th scope="col">Best book</th>
+                  <th scope="col">Odds</th><th scope="col">Model P</th>
+                  <th scope="col">Implied P</th><th scope="col">Edge</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for o in game.outcomes %}
+                  <tr class="{{ 'row-value' if o.edge > 0 else '' }}">
+                    <td>{{ o.outcome_name }} <span class="muted">({{ o.selection }})</span></td>
+                    <td>{{ o.bookmaker }}</td>
+                    <td>{{ '%+.0f'|format(o.price) }}</td>
+                    <td>{{ '%.0f'|format(o.true_prob * 100) }}%</td>
+                    <td>{{ '%.0f'|format(o.implied_prob * 100) }}%</td>
+                    <td class="{{ 'pos' if o.edge > 0 else 'neg' }}">
+                      {{ '%+.1f'|format(o.edge * 100) }}%</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+{% endif %}
+{% endblock %}

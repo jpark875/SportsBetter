@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "nba-bet-portfolio-engine"
+version = "0.1.0"
+description = "Treat a nightly NBA betting slate as a correlated asset portfolio using MPT + fractional Kelly."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "jpark875" }]
+keywords = ["nba", "sports-betting", "quantitative-finance", "kelly-criterion", "lightgbm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+]
+dependencies = [
+    "nba_api>=1.4.1",
+    "requests>=2.31.0",
+    "pandas>=2.1.0",
+    "numpy>=1.26.0",
+    "lightgbm>=4.3.0",
+    "xgboost>=2.0.3",
+    "scikit-learn>=1.4.0",
+    "scipy>=1.13.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+]
+
+[project.scripts]
+nba-engine = "main:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["config*", "data_pipeline*", "predictive_model*", "portfolio_manager*", "risk_bridge*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "scripts"]
+python_files = ["test_*.py", "benchmark_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["config", "data_pipeline", "predictive_model", "portfolio_manager", "risk_bridge"]
+omit = ["tests/*", "scripts/*", "main.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 70

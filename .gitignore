@@ -1,0 +1,65 @@
+# ============================================================
+# NBA Bet Portfolio Engine — .gitignore
+# ============================================================
+
+# Secrets — never commit
+.env
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# Model artefacts (large binary files — consider Git LFS)
+artefacts/*.pkl
+artefacts/*.joblib
+!artefacts/.gitkeep
+
+# Training data (CSVs can be large — regenerate with the pull scripts)
+data/*.csv
+data/*.parquet
+!data/.gitkeep
+
+# Web app database (personal bet ledger — never commit)
+webapp/data/
+*.db
+*.sqlite
+*.sqlite3
+instance/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# mypy
+.mypy_cache/

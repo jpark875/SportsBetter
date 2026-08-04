@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Value Betting Engine{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="{{ url_for('dashboard') }}">
+        <span aria-hidden="true">◆</span> Value Betting Engine
+      </a>
+      <nav class="primary-nav" aria-label="Primary">
+        <ul>
+          <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+          <li>
+            <details class="nav-dropdown">
+              <summary>Slates</summary>
+              <ul>
+                {% for s in nav_sports %}
+                  <li><a href="{{ url_for('slate', sport_key=s.key) }}">{{ s.name }}</a></li>
+                {% endfor %}
+              </ul>
+            </details>
+          </li>
+          <li><a href="{{ url_for('parlay') }}">Parlay Analyzer</a></li>
+          <li><a href="{{ url_for('history') }}">History &amp; Risk</a></li>
+          <li><a href="{{ url_for('settings') }}">Settings</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="wrap" role="status" aria-live="polite">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <main id="main" class="wrap" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>
+        For research and educational use. Model probabilities are estimates,
+        not guarantees. Bet only what you can afford to lose, and check the
+        gambling laws in your jurisdiction.
+      </p>
+      <p class="muted">Value Betting Engine &middot; {{ current_year }}</p>
+    </div>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

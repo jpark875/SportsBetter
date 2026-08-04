@@ -1,0 +1,32 @@
+# Value Betting Engine — Python dependencies
+# Python 3.11+ recommended.  Install with: pip install -r requirements.txt
+
+# ------- Web app -------
+Flask>=3.0
+
+# ------- Data ingestion -------
+nba_api>=1.4.1          # NBA & WNBA history (stats.nba.com)
+requests>=2.31.0
+
+# ------- Data wrangling -------
+pandas>=2.1.0
+numpy>=1.26.0
+
+# ------- Machine learning -------
+lightgbm>=4.3.0
+scikit-learn>=1.4.0
+xgboost>=2.0.3          # optional second backend (ModelTrainer backend="xgb")
+
+# ------- Optimisation -------
+scipy>=1.13.0
+
+# ------- Configuration -------
+python-dotenv>=1.0.0
+
+# ------- Visualisation (optional, for benchmark plots) -------
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# ------- Testing -------
+pytest>=8.0.0
+pytest-cov>=5.0.0
