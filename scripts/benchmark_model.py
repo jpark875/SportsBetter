@@ -300,7 +300,7 @@ def step_calibration(
             y_clean.to_numpy(),
             cv=5,
             method="predict_proba",
-            n_jobs=-1,
+            n_jobs=1,
         )[:, 1]
 
     calibrator = IsotonicCalibrator(y_min=0.01, y_max=0.99)

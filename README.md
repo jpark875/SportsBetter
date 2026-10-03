@@ -114,6 +114,13 @@ python -m webapp.app
 #   open http://127.0.0.1:5000
 ```
 
+Run the tests (no keys or network needed) and the synthetic-data benchmark:
+
+```bash
+pytest tests/ --cov=. --cov-fail-under=70
+python scripts/benchmark_model.py
+```
+
 ---
 
 ## Training the models

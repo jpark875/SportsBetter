@@ -254,7 +254,10 @@ class ModelTrainer:
         cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
         scores = cross_val_score(
             self._pipeline, X_clean, y_clean,
-            cv=cv, scoring="neg_log_loss", n_jobs=-1,
+            cv=cv, scoring="neg_log_loss",
+            # LightGBM already uses every core; fold-level workers on top deadlock
+            # in small containers.
+            n_jobs=1,
         )
         mean_ll = float(-scores.mean())
         std_ll = float(scores.std())

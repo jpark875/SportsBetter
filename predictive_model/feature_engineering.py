@@ -247,9 +247,11 @@ class FeatureEngineer:
             .drop_duplicates("game_id")
             .copy()
         )
-        game_dates["GAME_DATE"] = pd.to_datetime(
-            game_dates["commence_time"]
-        ).dt.normalize()
+        commence = pd.to_datetime(game_dates["commence_time"])
+        if commence.dt.tz is not None:
+            # Odds are UTC; the schedule's GAME_DATE is the US/Eastern calendar day.
+            commence = commence.dt.tz_convert("America/New_York").dt.tz_localize(None)
+        game_dates["GAME_DATE"] = commence.dt.normalize()
 
         for side, id_col in (("HOME", "HOME_TEAM_ID"), ("AWAY", "AWAY_TEAM_ID")):
             merged = games[["game_id", id_col]].merge(
