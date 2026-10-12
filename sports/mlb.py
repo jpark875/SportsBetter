@@ -1,13 +1,4 @@
-"""
-sports/mlb.py
-
-MLB plugin.  History comes from the official MLB Stats API
-(statsapi.mlb.com) — free, no key, JSON schedule per season.
-
-ELO tuning: K=6 and HFA=24 follow FiveThirtyEight's published MLB model;
-a 162-game season needs a slow-moving rating, and home advantage in
-baseball is the smallest of the major sports (~54% home win rate).
-"""
+"""MLB plugin."""
 
 from __future__ import annotations
 

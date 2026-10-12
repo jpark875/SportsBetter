@@ -1,13 +1,6 @@
-"""
-sports/_basketball.py
-
-Shared history fetcher for NBA and WNBA — both live behind the same
-stats.nba.com LeagueGameLog endpoint (league_id "00" vs "10"), so the
-pairing logic (two team rows per GAME_ID → one home/away game row) is
-written once here.
-
-Reuses the browser headers and retry ladder already hardened in
-data_pipeline/nba_stats_client.py.
+"""Shared history fetcher for NBA and WNBA — both live behind the same stats.nba.com
+LeagueGameLog endpoint (league_id "00" vs "10"), so the pairing logic (two team rows per
+GAME_ID → one home/away game row) is written once here.
 """
 
 from __future__ import annotations
@@ -31,16 +24,7 @@ def fetch_basketball_history(
     league_id: str,
     include_playoffs: bool = True,
 ) -> pd.DataFrame:
-    """
-    Fetch and pair game logs for the given seasons.
-
-    Parameters
-    ----------
-    seasons : list[str]
-        NBA format "2024-25"; WNBA format "2024".
-    league_id : str
-        "00" = NBA, "10" = WNBA.
-    """
+    """Fetch and pair game logs for the given seasons."""
     from nba_api.stats.endpoints import leaguegamelog
 
     season_types = ["Regular Season"] + (["Playoffs"] if include_playoffs else [])

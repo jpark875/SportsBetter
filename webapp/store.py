@@ -1,19 +1,4 @@
-"""
-webapp/store.py
-
-Persistence layer — a thin, dependency-free wrapper over SQLite (stdlib).
-
-Two things are stored:
-
-    profile   a single row of the user's financial parameters, kept in
-              sync with :class:`config.settings.UserRiskProfile`.
-    bets      the user's placed-bet ledger, which the risk-metrics module
-              turns into Sharpe / Sortino / drawdown analytics.
-
-SQLite was chosen over an ORM so the app runs with zero extra
-dependencies and the database is a single portable file.  The path is
-configurable via ``BETS_DB_PATH`` so tests can point at a temp file.
-"""
+"""Persistence layer — a thin, dependency-free wrapper over SQLite (stdlib)."""
 
 from __future__ import annotations
 
@@ -73,9 +58,6 @@ class Store:
                 """
             )
 
-    # ------------------------------------------------------------------
-    # Profile
-    # ------------------------------------------------------------------
 
     def get_profile(self) -> Dict:
         """Return the stored profile, or sensible defaults if none set yet."""
@@ -111,9 +93,6 @@ class Store:
                 (liquid_bankroll, disposable_income, volatility_tolerance, _utcnow()),
             )
 
-    # ------------------------------------------------------------------
-    # Bets
-    # ------------------------------------------------------------------
 
     def add_bet(
         self,
@@ -160,7 +139,6 @@ class Store:
             return 0.0
         if status == "lost":
             return -stake
-        # won
         if price >= 100:
             return stake * (price / 100.0)
         return stake * (100.0 / abs(price))

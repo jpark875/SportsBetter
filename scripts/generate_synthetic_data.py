@@ -1,33 +1,5 @@
-"""
-scripts/generate_synthetic_data.py
-
-Generates a realistic synthetic NBA game dataset for pipeline validation
-and ML benchmarking.  Requires NO API keys and NO internet access.
-
-The data-generating process (DGP) is calibrated to real NBA distributions:
-
-  Team ratings  — drawn from Normal(0, 5) net-rating, matching the ~10-point
-                  spread between best and worst teams in a typical season.
-  Home advantage — adds ~3.2 pts to the home team's effective net rating,
-                   consistent with empirical estimates since the 2020 bubble.
-  Back-to-back  — deducts 2.5 pts from a team's effective net rating,
-                   reflecting fatigue observed in pace-adjusted metrics.
-  Noise          — residual game-level variance of ~8 pts (roughly the
-                   std-dev of point differentials after controlling for quality).
-  Market line    — set to 90% of the "true" spread plus Gaussian noise,
-                   simulating an efficient but not perfectly accurate market.
-
-The synthetic data is used exclusively to validate that the ML pipeline
-produces sensible outputs. For a *production* model you must replace it
-with real historical data (see README — "Training on Real Data").
-
-Usage
------
-    from scripts.generate_synthetic_data import SyntheticNBADataset
-
-    ds = SyntheticNBADataset(n_seasons=4, games_per_season=1_230, seed=42)
-    X_train, X_test, y_train, y_test = ds.train_test_split()
-    odds_like_df = ds.odds_dataframe()
+"""Generates a realistic synthetic NBA game dataset for pipeline validation and ML
+benchmarking.
 """
 
 from __future__ import annotations
@@ -37,10 +9,6 @@ from typing import Optional, Tuple
 import numpy as np
 import pandas as pd
 
-
-# ---------------------------------------------------------------------------
-# Constants mirroring realistic NBA distributions
-# ---------------------------------------------------------------------------
 
 TEAM_NAMES = [
     "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN",
@@ -58,21 +26,7 @@ _MARKET_NOISE_STD: float = 1.5     # residual line noise
 
 
 class SyntheticNBADataset:
-    """
-    Generates multiple NBA seasons of synthetic game-level data.
-
-    Parameters
-    ----------
-    n_seasons : int
-        Number of seasons to simulate.  Each season has ``games_per_season`` games.
-    games_per_season : int
-        Total games per season (real NBA: 1,230).
-    seed : int
-        Random seed for reproducibility.
-    test_season_frac : float
-        Fraction of seasons to hold out as a temporal test set.
-        Default 0.25 → last season is the test set.
-    """
+    """Generates multiple NBA seasons of synthetic game-level data."""
 
     def __init__(
         self,
@@ -89,9 +43,6 @@ class SyntheticNBADataset:
         self._df: Optional[pd.DataFrame] = None
         self._generate()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     @property
     def dataframe(self) -> pd.DataFrame:
@@ -101,14 +52,7 @@ class SyntheticNBADataset:
     def train_test_split(
         self,
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-        """
-        Temporal train/test split (last ``test_season_frac`` of seasons as test).
-
-        Returns
-        -------
-        tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]
-            ``(X_train, X_test, y_train, y_test)``
-        """
+        """Temporal train/test split (last ``test_season_frac`` of seasons as test)."""
         df = self._df
         cutoff_season = int(self.n_seasons * (1 - self.test_season_frac))
         train = df[df["season"] < cutoff_season]
@@ -123,16 +67,10 @@ class SyntheticNBADataset:
         )
 
     def odds_dataframe(self) -> pd.DataFrame:
-        """
-        Return an odds-like DataFrame in the canonical OddsClient schema.
-
-        Useful for end-to-end pipeline smoke-tests that need an odds feed
-        without calling any external API.
-        """
+        """Return an odds-like DataFrame in the canonical OddsClient schema."""
         df = self._df.copy()
         rows = []
         for _, row in df.iterrows():
-            # Moneyline home
             rows.append({
                 "game_id": row["game_id"],
                 "commence_time": row["game_date"],
@@ -149,7 +87,6 @@ class SyntheticNBADataset:
                 "prop_stat": "",
                 "implied_prob": row["ML_IMPLIED_HOME_PROB"],
             })
-            # Moneyline away
             rows.append({
                 "game_id": row["game_id"],
                 "commence_time": row["game_date"],
@@ -166,7 +103,6 @@ class SyntheticNBADataset:
                 "prop_stat": "",
                 "implied_prob": 1.0 - row["ML_IMPLIED_HOME_PROB"],
             })
-            # Spread
             rows.append({
                 "game_id": row["game_id"],
                 "commence_time": row["game_date"],
@@ -192,9 +128,6 @@ class SyntheticNBADataset:
         """Summary statistics for the feature matrix."""
         return self._df[self._feature_columns()].describe()
 
-    # ------------------------------------------------------------------
-    # Internal generation
-    # ------------------------------------------------------------------
 
     def _generate(self) -> None:
         """Build the full synthetic DataFrame."""
@@ -222,7 +155,6 @@ class SyntheticNBADataset:
         last_game: dict[str, Optional[pd.Timestamp]] = {t: None for t in TEAM_NAMES}
 
         for game_num in range(self.games_per_season):
-            # Sample two distinct teams
             home_idx, away_idx = self._rng.choice(len(TEAM_NAMES), size=2, replace=False)
             home = TEAM_NAMES[home_idx]
             away = TEAM_NAMES[away_idx]
@@ -230,7 +162,6 @@ class SyntheticNBADataset:
             game_date = base_date + pd.Timedelta(days=int(game_num * 150 / self.games_per_season))
             game_id = f"{home}_{away}_{game_date.strftime('%Y%m%d')}_{game_num}"
 
-            # Rest days
             home_rest = self._rest_days(last_game[home], game_date)
             away_rest = self._rest_days(last_game[away], game_date)
 
@@ -256,7 +187,6 @@ class SyntheticNBADataset:
             delta_efg_pct = delta_net * 0.006 + self._rng.normal(0, 0.02)
             delta_ts_pct = delta_net * 0.005 + self._rng.normal(0, 0.015)
 
-            # True outcome
             point_diff = delta_net + self._rng.normal(0, _GAME_NOISE_STD)
             home_win = int(point_diff > 0)
 
@@ -280,9 +210,7 @@ class SyntheticNBADataset:
                 "game_date": game_date,
                 "home_team": home,
                 "away_team": away,
-                # Target
                 "HOME_WIN": home_win,
-                # Delta features
                 "DELTA_PACE": delta_pace,
                 "DELTA_OFF_RATING": delta_off,
                 "DELTA_DEF_RATING": delta_def,
@@ -292,14 +220,12 @@ class SyntheticNBADataset:
                 "DELTA_DREB_PCT": delta_dreb_pct,
                 "DELTA_EFG_PCT": delta_efg_pct,
                 "DELTA_TS_PCT": delta_ts_pct,
-                # Schedule features
                 "HOME_REST_DAYS": home_rest,
                 "AWAY_REST_DAYS": away_rest,
                 "HOME_IS_B2B": int(home_rest == 1),
                 "AWAY_IS_B2B": int(away_rest == 1),
                 "HOME_IS_B2B_FIRST": int(self._rng.uniform() < 0.08),
                 "AWAY_IS_B2B_FIRST": int(self._rng.uniform() < 0.08),
-                # Market features
                 "ML_IMPLIED_HOME_PROB": ml_implied_home_prob,
                 "CONSENSUS_SPREAD": market_spread,
                 "CONSENSUS_TOTAL": round(consensus_total * 2) / 2,
@@ -310,9 +236,6 @@ class SyntheticNBADataset:
 
         return pd.DataFrame(rows)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _rest_days(
@@ -334,10 +257,6 @@ class SyntheticNBADataset:
             "ML_IMPLIED_HOME_PROB", "CONSENSUS_SPREAD", "CONSENSUS_TOTAL",
         ]
 
-
-# ---------------------------------------------------------------------------
-# Utility
-# ---------------------------------------------------------------------------
 
 def _prob_to_american(p: float) -> float:
     """Convert win probability to American moneyline odds (no vig)."""

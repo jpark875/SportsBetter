@@ -1,16 +1,4 @@
-"""
-sports/epl.py
-
-English Premier League plugin.  History comes from football-data.co.uk's
-free per-season CSVs (results + closing odds, maintained since the 90s).
-
-The EPL is a 3-way market (draws ≈ 24% of matches), so the trainer
-produces a 3-class model exactly like the World Cup engine.
-
-Team names: football-data uses short names ("Man United", "Nott'm Forest")
-while TheOddsAPI uses full names ("Manchester United") — normalize_name
-maps odds names onto the football-data canon.
-"""
+"""English Premier League plugin."""
 
 from __future__ import annotations
 

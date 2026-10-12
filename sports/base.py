@@ -1,18 +1,4 @@
-"""
-sports/base.py
-
-The sport-plugin contract.  Adding a new sport to the entire app
-(training script, web app, arbitrage scanner, parlay builder) means
-writing one subclass of :class:`SportPlugin` that can answer a single
-question — "give me every historical game as date/home/away/scores" —
-plus a :class:`SportConfig` of tuning constants, and registering it in
-``sports/__init__.py``.  Everything downstream is shared code.
-
-Model artefacts per sport land in ``MODEL_DIR`` as:
-    <key>_model.pkl   — fitted ModelTrainer (binary or 3-class)
-    <key>_state.pkl   — dict: current ELO, latest team stats, calibrator,
-                        metadata (trained_at, feature_cols, has_draws)
-"""
+"""The sport-plugin contract."""
 
 from __future__ import annotations
 
@@ -48,22 +34,14 @@ class SportPlugin(ABC):
 
     @abstractmethod
     def fetch_history(self) -> pd.DataFrame:
-        """
-        Return all available historical games with columns:
-            date (datetime), home_team, away_team,
-            home_score (float), away_score (float)
-
-        Team names must match what TheOddsAPI uses for this sport —
-        override :meth:`normalize_name` when the sources disagree.
+        """Return all available historical games with columns: date (datetime), home_team,
+        away_team, home_score (float), away_score (float)
         """
 
     def normalize_name(self, name: str) -> str:
         """Map an odds-provider team name to this plugin's canonical name."""
         return name.strip()
 
-    # ------------------------------------------------------------------
-    # Artefact locations (shared convention)
-    # ------------------------------------------------------------------
 
     @property
     def model_path(self) -> str:

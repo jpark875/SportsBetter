@@ -1,30 +1,4 @@
-"""
-main.py
-
-NBA Bet Portfolio Engine — entry script.
-
-Execution order
----------------
-1.  Prompt user for risk profile (bankroll, disposable income, tolerance).
-2.  Ingest live odds for tonight's slate via OddsClient.
-3.  Pull player & team stats from nba_api.
-4.  Engineer features and align by game_id / player_id.
-5.  Load (or train) the LightGBM model + isotonic calibrator.
-6.  Generate calibrated win probabilities for every active wager.
-7.  Estimate the inter-bet covariance matrix.
-8.  Run the SLSQP portfolio optimiser with risk-bridge constraints.
-9.  Print the final allocation table.
-
-Run
----
-    python main.py [--train] [--season 2024-25] [--provider theodds|oddsjam]
-
-Flags
------
-    --train     Re-train the model on cached historical data before scoring.
-    --season    NBA season string (default: ``"2024-25"``).
-    --provider  Odds provider (default from .env / ``"theodds"``).
-"""
+"""NBA Bet Portfolio Engine — entry script."""
 
 from __future__ import annotations
 
@@ -32,13 +6,10 @@ import argparse
 import logging
 import os
 import sys
-from typing import Optional
 
 import pandas as pd
 
-# ---------------------------------------------------------------------------
 # Logging setup (must happen before any module-level loggers fire)
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -46,10 +17,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-# ---------------------------------------------------------------------------
 # Internal imports (after logging is configured)
-# ---------------------------------------------------------------------------
-from config.settings import UserRiskProfile, WC_SPORT_KEY, NBA_SPORT_KEY
+from config.settings import UserRiskProfile, WC_SPORT_KEY
 from data_pipeline.nba_stats_client import NBAStatsClient
 from data_pipeline.odds_client import OddsClient
 from predictive_model.feature_engineering import FeatureEngineer
@@ -59,10 +28,6 @@ from portfolio_manager.covariance_estimator import CovarianceEstimator
 from portfolio_manager.optimizer import PortfolioOptimizer
 from risk_bridge.risk_manager import RiskManager
 
-
-# ---------------------------------------------------------------------------
-# CLI argument parsing
-# ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -93,10 +58,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# ---------------------------------------------------------------------------
-# User risk profile prompt
-# ---------------------------------------------------------------------------
-
 def _prompt_risk_profile() -> UserRiskProfile:
     """Interactively collect the user's financial parameters."""
     print("\n=== NBA Bet Portfolio Engine — Risk Profile Setup ===")
@@ -114,31 +75,11 @@ def _prompt_risk_profile() -> UserRiskProfile:
         return UserRiskProfile()
 
 
-# ---------------------------------------------------------------------------
-# Model loading / training
-# ---------------------------------------------------------------------------
-
 def _load_or_train_model(
     train: bool,
     feature_df: pd.DataFrame,
 ) -> tuple[ModelTrainer, IsotonicCalibrator]:
-    """
-    Return a fitted (ModelTrainer, IsotonicCalibrator) pair.
-
-    If ``--train`` is set, or if no saved model exists, trains from scratch
-    using labelled rows in ``feature_df`` (rows where ``HOME_WIN`` is not NaN).
-
-    Parameters
-    ----------
-    train : bool
-    feature_df : pd.DataFrame
-        Feature matrix from FeatureEngineer.  Must include ``HOME_WIN`` column
-        for training rows.
-
-    Returns
-    -------
-    tuple[ModelTrainer, IsotonicCalibrator]
-    """
+    """Return a fitted (ModelTrainer, IsotonicCalibrator) pair."""
     from config.settings import LGBM_MODEL_PATH, CALIBRATOR_PATH
 
     if not train and os.path.exists(LGBM_MODEL_PATH) and os.path.exists(CALIBRATOR_PATH):
@@ -176,26 +117,12 @@ def _load_or_train_model(
     return trainer, calibrator
 
 
-# ---------------------------------------------------------------------------
 # Scoring-time stats loader (fast path: 2 API calls instead of 30+)
-# ---------------------------------------------------------------------------
 
 def _load_scoring_stats(
     nba_client: NBAStatsClient,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Fetch team advanced metrics and schedule features for live scoring.
-
-    Replaces ``load_all()`` at scoring time — makes 2 API calls instead of
-    the 30+ TeamGameLog calls that ``fetch_schedule_features()`` requires.
-    Both failures are non-fatal: FeatureEngineer fills missing stat values
-    with NaN, and schedule columns default to NaN if unavailable.
-
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.DataFrame]
-        ``(team_df, sched_df)``
-    """
+    """Fetch team advanced metrics and schedule features for live scoring."""
     team_df = pd.DataFrame()
     sched_df = pd.DataFrame()
 
@@ -216,16 +143,9 @@ def _load_scoring_stats(
     return team_df, sched_df
 
 
-# ---------------------------------------------------------------------------
-# Main pipeline
-# ---------------------------------------------------------------------------
-
 def run(args: argparse.Namespace) -> None:
     """Execute the full pipeline for tonight's slate."""
 
-    # ------------------------------------------------------------------
-    # 1. Risk profile
-    # ------------------------------------------------------------------
     profile = _prompt_risk_profile()
     risk_manager = RiskManager(profile)
 
@@ -241,9 +161,6 @@ def run(args: argparse.Namespace) -> None:
         bankroll, max_port_frac * 100,
     )
 
-    # ------------------------------------------------------------------
-    # 2. Ingest live odds
-    # ------------------------------------------------------------------
     logger.info("Fetching live odds …")
     odds_client = OddsClient(provider=args.provider)
     game_odds_df = odds_client.get_game_odds()
@@ -275,17 +192,11 @@ def run(args: argparse.Namespace) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not fetch player props: %s", exc)
 
-    # ------------------------------------------------------------------
-    # 3. Pull NBA stats (2 API calls: team advanced + schedule log)
-    # ------------------------------------------------------------------
     logger.info("Fetching NBA stats (season: %s) …", args.season)
     nba_client = NBAStatsClient(season=args.season)
     team_df, sched_df = _load_scoring_stats(nba_client)
     player_df = pd.DataFrame()  # prop features not needed for moneyline/spread
 
-    # ------------------------------------------------------------------
-    # 4. Feature engineering
-    # ------------------------------------------------------------------
     logger.info("Engineering features …")
     engineer = FeatureEngineer(
         team_stats=team_df,
@@ -294,18 +205,8 @@ def run(args: argparse.Namespace) -> None:
     )
     game_features = engineer.build_game_features(game_odds_df)
 
-    prop_features = pd.DataFrame()
-    if not prop_df.empty:
-        prop_features = engineer.build_prop_features(prop_df)
-
-    # ------------------------------------------------------------------
-    # 5. Load / train model
-    # ------------------------------------------------------------------
     trainer, calibrator = _load_or_train_model(args.train, game_features)
 
-    # ------------------------------------------------------------------
-    # 6. Predict calibrated probabilities
-    # ------------------------------------------------------------------
     score_df = game_features.drop(
         columns=["home_team", "away_team", "commence_time", "HOME_WIN"],
         errors="ignore",
@@ -323,9 +224,6 @@ def run(args: argparse.Namespace) -> None:
 
     logger.info("  %d candidate wagers assembled.", len(bets_df))
 
-    # ------------------------------------------------------------------
-    # 7. Covariance estimation
-    # ------------------------------------------------------------------
     cov_estimator = CovarianceEstimator()
     cov_estimator.fit(bets_df)
 
@@ -336,9 +234,6 @@ def run(args: argparse.Namespace) -> None:
             [(a, b, f"{c:.2f}") for a, b, c in high_corr[:5]],
         )
 
-    # ------------------------------------------------------------------
-    # 8. Portfolio optimisation
-    # ------------------------------------------------------------------
     optimizer = PortfolioOptimizer(
         max_portfolio_fraction=max_port_frac,
         max_single_bet_fraction=max_single,
@@ -347,9 +242,6 @@ def run(args: argparse.Namespace) -> None:
     allocation_df = optimizer.optimise(bets_df, cov_estimator, bankroll)
     allocation_df = risk_manager.apply_constraints_to_allocation(allocation_df)
 
-    # ------------------------------------------------------------------
-    # 9. Output
-    # ------------------------------------------------------------------
     _print_allocation(allocation_df, optimizer)
 
 
@@ -357,13 +249,8 @@ def _build_bets_table(
     odds_df: pd.DataFrame,
     game_features: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Join best-line odds with calibrated probabilities to produce the
-    unified bets table consumed by the covariance estimator and optimiser.
-
-    Each row represents one independently actionable wager with columns:
-    ``bet_id, game_id, bet_type, outcome_name, bookmaker, price, point,
-    true_prob, edge``.
+    """Join best-line odds with calibrated probabilities to produce the unified bets table
+    consumed by the covariance estimator and optimiser.
     """
     # Use best available line per (game_id, bet_type, outcome_name)
     best = (
@@ -389,7 +276,6 @@ def _build_bets_table(
     # Drop rows without probability estimate
     best = best.dropna(subset=["true_prob"]).copy()
 
-    # Construct unique bet_id
     best["bet_id"] = (
         best["game_id"] + "__"
         + best["bet_type"] + "__"
@@ -452,10 +338,6 @@ def _print_allocation(
     print("=" * 72 + "\n")
 
 
-# ---------------------------------------------------------------------------
-# World Cup pipeline
-# ---------------------------------------------------------------------------
-
 def _run_wc(args: argparse.Namespace) -> None:
     """Full World Cup scoring pipeline (3-way: home / draw / away)."""
     from config.settings import (
@@ -472,7 +354,6 @@ def _run_wc(args: argparse.Namespace) -> None:
 
     FEAT_COLS = WC_FEATURE_COLS
 
-    # 1. Risk profile
     profile = _prompt_risk_profile()
     risk_manager = RiskManager(profile)
     if not risk_manager.is_session_live:
@@ -486,7 +367,6 @@ def _run_wc(args: argparse.Namespace) -> None:
         bankroll, max_port_frac * 100,
     )
 
-    # 2. Fetch World Cup odds
     logger.info("Fetching World Cup odds (sport_key=%s) …", WC_SPORT_KEY)
     odds_client = OddsClient(provider=args.provider, sport_key=WC_SPORT_KEY)
     odds_df = odds_client.get_game_odds(markets=["h2h"])  # 1X2 only
@@ -501,11 +381,9 @@ def _run_wc(args: argparse.Namespace) -> None:
     logger.info("  %d odds rows received for %d games.",
                 len(odds_df), odds_df["game_id"].nunique())
 
-    # 2b. Arbitrage scan (before Kelly — guaranteed profit takes priority)
     arb_df = scan_for_arbitrage(odds_df)
     print_arb_report(arb_df, budget=bankroll / max(len(odds_df["game_id"].unique()), 1))
 
-    # 3. Build full historical feature matrix
     logger.info("Downloading match results …")
     raw = load_data(FOOTBALL_DATA_URL)
 
@@ -527,7 +405,6 @@ def _run_wc(args: argparse.Namespace) -> None:
     raw["IS_NEUTRAL"] = raw["neutral"].astype(int)
     current_elo, latest_stats = get_current_state(raw)
 
-    # 4. Build one feature row per unique game in tonight's slate
     games = (
         odds_df[["game_id", "home_team", "away_team", "commence_time"]]
         .drop_duplicates("game_id")
@@ -549,7 +426,6 @@ def _run_wc(args: argparse.Namespace) -> None:
         feature_rows.append(row)
     feature_df = pd.DataFrame(feature_rows).set_index("game_id")
 
-    # 5. Load WC model
     if not os.path.exists(WC_MODEL_PATH):
         logger.error(
             "WC model not found: %s\n"
@@ -560,14 +436,12 @@ def _run_wc(args: argparse.Namespace) -> None:
     logger.info("Loading WC model from %s …", WC_MODEL_PATH)
     trainer = ModelTrainer.load(WC_MODEL_PATH)
 
-    # 6. Predict P(away win), P(draw), P(home win) for each game
     missing_feats = [c for c in FEAT_COLS if c not in feature_df.columns]
     if missing_feats:
         logger.warning("Feature columns missing from scoring row: %s", missing_feats)
     score_df = feature_df[FEAT_COLS].fillna(feature_df[FEAT_COLS].median())
     proba = trainer.predict_proba_all(score_df)  # shape (n_games, 3)
 
-    # 7. Build bets table — one row per (game, outcome)
     bets_rows = []
     result_labels = {0: "Away win", 1: "Draw", 2: "Home win"}
     for i, (gid, g_feat) in enumerate(feature_df.iterrows()):
@@ -635,7 +509,6 @@ def _run_wc(args: argparse.Namespace) -> None:
     logger.info("  %d positive-edge bets across %d games.",
                 len(bets_df), bets_df["game_id"].nunique())
 
-    # 8. Covariance + optimisation
     cov_estimator = CovarianceEstimator()
     cov_estimator.fit(bets_df)
 
@@ -647,7 +520,6 @@ def _run_wc(args: argparse.Namespace) -> None:
     allocation_df = optimizer.optimise(bets_df, cov_estimator, bankroll)
     allocation_df = risk_manager.apply_constraints_to_allocation(allocation_df)
 
-    # 9. Print allocation + context
     _print_wc_allocation(allocation_df, optimizer, bets_df)
 
 
@@ -715,10 +587,6 @@ def _print_wc_allocation(
     )
     print("=" * 72 + "\n")
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     _args = _parse_args()

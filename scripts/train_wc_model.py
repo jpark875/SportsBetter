@@ -1,24 +1,4 @@
-"""
-scripts/train_wc_model.py
-
-Train a 3-class LightGBM model on the World Cup training CSV.
-
-Classes
--------
-  0 = away win
-  1 = draw
-  2 = home win
-
-Output
-------
-  artefacts/wc_lgbm.pkl         -- fitted ModelTrainer (3-class)
-  artefacts/wc_calibrator.pkl   -- passthrough placeholder for pipeline compat
-
-Usage
------
-  python scripts/train_wc_model.py
-  python scripts/train_wc_model.py --data data/wc_training_features.csv
-"""
+"""Train a 3-class LightGBM model on the World Cup training CSV."""
 
 from __future__ import annotations
 
@@ -39,7 +19,6 @@ if _ROOT not in sys.path:
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
 from sklearn.metrics import log_loss
-from sklearn.preprocessing import label_binarize
 
 from config.settings import WC_FEATURE_COLS, WC_MODEL_PATH, WC_CALIBRATOR_PATH
 from predictive_model.model_trainer import ModelTrainer

@@ -1,18 +1,5 @@
-"""
-predictive_model/model_trainer.py
-
-LightGBM binary-classification pipeline that outputs raw win/loss
-probabilities for every wager type.
-
-Training workflow
------------------
-1. ``ModelTrainer.fit(X, y)``       — train on historical feature matrix.
-2. ``ModelTrainer.predict_proba(X)``— output uncalibrated P(win) ∈ (0, 1).
-3. Pass the raw probabilities to :class:`~predictive_model.probability_calibrator.IsotonicCalibrator`
-   before feeding them to the portfolio optimiser.
-
-The class also exposes a cross-validation helper (``cross_val_log_loss``)
-so you can tune hyper-parameters without leaking future data.
+"""LightGBM binary-classification pipeline that outputs raw win/loss probabilities for
+every wager type.
 """
 
 from __future__ import annotations
@@ -40,13 +27,10 @@ try:
 except ImportError:  # pragma: no cover
     _XGB_AVAILABLE = False
 
-from config.settings import LGBM_MODEL_PATH, MODEL_DIR
+from config.settings import LGBM_MODEL_PATH
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Default hyper-parameters
-# ---------------------------------------------------------------------------
 
 _LGBM_DEFAULTS: Dict[str, Any] = {
     "objective": "binary",
@@ -81,24 +65,9 @@ _XGB_DEFAULTS: Dict[str, Any] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Core trainer
-# ---------------------------------------------------------------------------
-
 class ModelTrainer:
-    """
-    Trains a LightGBM (default) or XGBoost binary classifier on historical
-    NBA game/prop data.
-
-    Parameters
-    ----------
-    backend : str
-        ``"lgbm"`` (default) or ``"xgb"``.
-    hyper_params : dict, optional
-        Override any default hyper-parameter key-value pairs.
-    feature_cols : list[str], optional
-        Explicit list of columns to use from the training DataFrame.
-        If ``None``, all numeric columns are used automatically.
+    """Trains a LightGBM (default) or XGBoost binary classifier on historical NBA game/prop
+    data.
     """
 
     def __init__(
@@ -132,9 +101,6 @@ class ModelTrainer:
             ("clf", base_model),
         ])
 
-    # ------------------------------------------------------------------
-    # Fit
-    # ------------------------------------------------------------------
 
     def fit(
         self,
@@ -143,25 +109,7 @@ class ModelTrainer:
         eval_set: Optional[Tuple[pd.DataFrame, pd.Series]] = None,
         early_stopping_rounds: int = 50,
     ) -> "ModelTrainer":
-        """
-        Train the model on historical data.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Feature matrix.  Rows with NaN labels are silently dropped.
-        y : pd.Series
-            Binary target: 1 = home team wins / prop Over hits, 0 otherwise.
-        eval_set : tuple[pd.DataFrame, pd.Series], optional
-            Validation set for early stopping (LightGBM / XGBoost only).
-        early_stopping_rounds : int
-            Number of rounds without improvement before stopping.
-
-        Returns
-        -------
-        ModelTrainer
-            Returns ``self`` for method chaining.
-        """
+        """Train the model on historical data."""
         X, y = self._resolve_features(X, y, fit=True)
         logger.info(
             "Training %s on %d samples × %d features …",
@@ -173,7 +121,6 @@ class ModelTrainer:
         fit_kwargs: Dict[str, Any] = {}
         if eval_set is not None:
             X_val, y_val = self._resolve_features(*eval_set)
-            clf_step = self._pipeline.named_steps["clf"]
             scaler = self._pipeline.named_steps["scaler"]
             X_val_scaled = scaler.transform(X_val)
             fit_kwargs["clf__eval_set"] = [(X_val_scaled, y_val)]
@@ -189,43 +136,19 @@ class ModelTrainer:
         logger.info("Training complete.")
         return self
 
-    # ------------------------------------------------------------------
-    # Predict
-    # ------------------------------------------------------------------
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
-        """
-        Return uncalibrated P(positive class) for each row in ``X``.
-
-        For binary models returns shape ``(n,)``.
-        For multiclass models use :meth:`predict_proba_all` instead.
-
-        Returns
-        -------
-        np.ndarray, shape (n_samples,)
-        """
+        """Return uncalibrated P(positive class) for each row in ``X``."""
         self._assert_fitted()
         X_clean, _ = self._resolve_features(X, fit=False)
         return self._pipeline.predict_proba(X_clean)[:, 1]
 
     def predict_proba_all(self, X: pd.DataFrame) -> np.ndarray:
-        """
-        Return uncalibrated class probabilities for all classes.
-
-        Use this for multiclass models (e.g. soccer 3-way: away/draw/home).
-
-        Returns
-        -------
-        np.ndarray, shape (n_samples, n_classes)
-            Columns correspond to sorted class labels (0, 1, 2, …).
-        """
+        """Return uncalibrated class probabilities for all classes."""
         self._assert_fitted()
         X_clean, _ = self._resolve_features(X, fit=False)
         return self._pipeline.predict_proba(X_clean)
 
-    # ------------------------------------------------------------------
-    # Cross-validation
-    # ------------------------------------------------------------------
 
     def cross_val_log_loss(
         self,
@@ -233,23 +156,7 @@ class ModelTrainer:
         y: pd.Series,
         n_splits: int = 5,
     ) -> Tuple[float, float]:
-        """
-        Time-aware stratified k-fold log-loss estimate.
-
-        Note: For proper temporal validation you should sort ``X`` by date
-        and use ``sklearn.model_selection.TimeSeriesSplit`` instead.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-        y : pd.Series
-        n_splits : int
-
-        Returns
-        -------
-        tuple[float, float]
-            ``(mean_log_loss, std_log_loss)``
-        """
+        """Time-aware stratified k-fold log-loss estimate."""
         X_clean, y_clean = self._resolve_features(X, y, fit=True)
         cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
         scores = cross_val_score(
@@ -264,24 +171,9 @@ class ModelTrainer:
         logger.info("CV log-loss: %.4f ± %.4f", mean_ll, std_ll)
         return mean_ll, std_ll
 
-    # ------------------------------------------------------------------
-    # Persistence
-    # ------------------------------------------------------------------
 
     def save(self, path: Optional[str] = None) -> str:
-        """
-        Serialise the fitted pipeline to disk with pickle.
-
-        Parameters
-        ----------
-        path : str, optional
-            File path.  Defaults to ``config.settings.LGBM_MODEL_PATH``.
-
-        Returns
-        -------
-        str
-            Absolute path where the model was written.
-        """
+        """Serialise the fitted pipeline to disk with pickle."""
         self._assert_fitted()
         path = path or LGBM_MODEL_PATH
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -292,18 +184,7 @@ class ModelTrainer:
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "ModelTrainer":
-        """
-        Load a previously serialised :class:`ModelTrainer`.
-
-        Parameters
-        ----------
-        path : str, optional
-            File path.  Defaults to ``config.settings.LGBM_MODEL_PATH``.
-
-        Returns
-        -------
-        ModelTrainer
-        """
+        """Load a previously serialised :class:`ModelTrainer`."""
         path = path or LGBM_MODEL_PATH
         with open(path, "rb") as fh:
             obj = pickle.load(fh)
@@ -312,17 +193,10 @@ class ModelTrainer:
         logger.info("Model loaded ← %s", path)
         return obj
 
-    # ------------------------------------------------------------------
-    # Feature introspection
-    # ------------------------------------------------------------------
 
     @property
     def feature_importances(self) -> pd.Series:
-        """
-        Return feature importances (gain-based) as a sorted ``pd.Series``.
-
-        Only available after fitting.
-        """
+        """Return feature importances (gain-based) as a sorted ``pd.Series``."""
         self._assert_fitted()
         clf = self._pipeline.named_steps["clf"]
         if self.backend == "lgbm":
@@ -334,9 +208,6 @@ class ModelTrainer:
             .sort_values(ascending=False)
         )
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     def _resolve_features(
         self,

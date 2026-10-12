@@ -1,4 +1,5 @@
-"""Integration tests: a toy sport trained from synthetic history, scored against fake odds."""
+"""Integration tests: a toy sport trained from synthetic history, scored against fake odds.
+"""
 
 from __future__ import annotations
 

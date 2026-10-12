@@ -1,33 +1,4 @@
-"""
-scripts/pull_training_data.py
-
-Downloads real NBA game data from nba_api and builds a training-ready
-feature CSV.  Requires NO odds API key -- everything here is free.
-
-What it pulls
--------------
-For each target season (default: 2022-23, 2023-24, 2024-25):
-  - LeagueGameLog       -> one row per team per game (result, date, matchup)
-  - LeagueDashTeamStats -> season-level advanced metrics (Pace, OffRtg, DefRtg …)
-
-How it avoids look-ahead bias
-------------------------------
-For a game played in season N, the model uses team stats from season N-1.
-This mirrors what you would actually know on game day -- you can look up last
-season's ratings but you don't yet have this season's final numbers.
-
-Output
-------
-  data/training_features.csv  -- one row per game, ready for train_model.py
-
-Usage
------
-  python scripts/pull_training_data.py
-  python scripts/pull_training_data.py --seasons 2021-22 2022-23 2023-24 2024-25
-  python scripts/pull_training_data.py --dry-run   # show what would be pulled
-
-Expected run time: ~4 minutes (nba_api rate-limit of 20 req/min).
-"""
+"""Downloads real NBA game data from nba_api and builds a training-ready feature CSV."""
 
 from __future__ import annotations
 
@@ -53,9 +24,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("pull")
 
-# ---------------------------------------------------------------------------
 # Rate-limit helper -- nba_api is an unofficial scraper; be polite
-# ---------------------------------------------------------------------------
 
 _LAST_CALL: float = 0.0
 _MIN_INTERVAL: float = 60.0 / 20   # 20 calls per minute -> 3 s between calls
@@ -68,10 +37,6 @@ def _wait() -> None:
         time.sleep(_MIN_INTERVAL - elapsed)
     _LAST_CALL = time.monotonic()
 
-
-# ---------------------------------------------------------------------------
-# Season helpers
-# ---------------------------------------------------------------------------
 
 def _prev_season(season: str) -> str:
     """'2024-25' -> '2023-24'"""
@@ -87,18 +52,8 @@ def _season_list(seasons: List[str]) -> List[str]:
     return sorted(needed)
 
 
-# ---------------------------------------------------------------------------
-# Step 1: Pull game logs
-# ---------------------------------------------------------------------------
-
 def pull_game_logs(season: str) -> pd.DataFrame:
-    """
-    Pull every regular-season game for *season* from LeagueGameLog.
-
-    Returns one row per HOME team per game with columns:
-        GAME_ID, GAME_DATE, HOME_TEAM_ID, AWAY_TEAM_ID,
-        HOME_TEAM_ABB, AWAY_TEAM_ABB, HOME_WIN, SEASON
-    """
+    """Pull every regular-season game for *season* from LeagueGameLog."""
     log.info("  Pulling game log: %s …", season)
     _wait()
 
@@ -145,18 +100,8 @@ def pull_game_logs(season: str) -> pd.DataFrame:
     return home_rows[cols].dropna().reset_index(drop=True)
 
 
-# ---------------------------------------------------------------------------
-# Step 2: Pull team advanced stats
-# ---------------------------------------------------------------------------
-
 def pull_team_stats(season: str) -> pd.DataFrame:
-    """
-    Pull per-season team advanced metrics from LeagueDashTeamStats.
-
-    Returns one row per team with TEAM_ID as index and columns:
-        PACE, OFF_RATING, DEF_RATING, NET_RATING,
-        AST_PCT, OREB_PCT, DREB_PCT, EFG_PCT, TS_PCT
-    """
+    """Pull per-season team advanced metrics from LeagueDashTeamStats."""
     log.info("  Pulling team stats: %s …", season)
     _wait()
 
@@ -182,28 +127,8 @@ def pull_team_stats(season: str) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Step 3: Build rest-day / back-to-back features from the game log
-# ---------------------------------------------------------------------------
-
 def build_schedule_features(all_games: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute REST_DAYS, IS_B2B, IS_B2B_FIRST for home and away teams.
-
-    Operates on the full multi-season game log so back-to-back detection
-    works correctly across season boundaries.
-
-    Parameters
-    ----------
-    all_games : pd.DataFrame
-        Combined output of pull_game_logs() for all seasons.
-        Must have GAME_DATE, HOME_TEAM_ID, AWAY_TEAM_ID, GAME_ID.
-
-    Returns
-    -------
-    pd.DataFrame
-        Original DataFrame with 6 new schedule columns appended.
-    """
+    """Compute REST_DAYS, IS_B2B, IS_B2B_FIRST for home and away teams."""
     # Build a flat team -> game_date table to compute rest days
     home_side = all_games[["GAME_ID", "GAME_DATE", "HOME_TEAM_ID"]].rename(
         columns={"HOME_TEAM_ID": "TEAM_ID"}
@@ -234,7 +159,6 @@ def build_schedule_features(all_games: pd.DataFrame) -> pd.DataFrame:
         ["GAME_ID", "TEAM_ID", "REST_DAYS", "IS_B2B", "IS_B2B_FIRST"]
     ].copy()
 
-    # Join home side
     df = all_games.merge(
         sched.rename(columns={
             "TEAM_ID":       "HOME_TEAM_ID",
@@ -245,7 +169,6 @@ def build_schedule_features(all_games: pd.DataFrame) -> pd.DataFrame:
         on=["GAME_ID", "HOME_TEAM_ID"],
         how="left",
     )
-    # Join away side
     df = df.merge(
         sched.rename(columns={
             "TEAM_ID":       "AWAY_TEAM_ID",
@@ -259,10 +182,6 @@ def build_schedule_features(all_games: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Step 4: Merge lagged team stats onto game rows
-# ---------------------------------------------------------------------------
-
 _STAT_COLS = [
     "PACE", "OFF_RATING", "DEF_RATING", "NET_RATING",
     "AST_PCT", "OREB_PCT", "DREB_PCT", "EFG_PCT", "TS_PCT",
@@ -273,24 +192,7 @@ def merge_lagged_stats(
     games: pd.DataFrame,
     all_team_stats: Dict[str, pd.DataFrame],
 ) -> pd.DataFrame:
-    """
-    For each game in season N, attach team ratings from season N-1.
-
-    If season N-1 stats are not available (e.g. expansion team or first
-    season in the dataset), fall back to the league mean for that season.
-
-    Parameters
-    ----------
-    games : pd.DataFrame
-        Game log with SEASON, HOME_TEAM_ID, AWAY_TEAM_ID columns.
-    all_team_stats : dict[str, pd.DataFrame]
-        Map of season string -> team stats DataFrame (from pull_team_stats).
-
-    Returns
-    -------
-    pd.DataFrame
-        Games with DELTA_* columns and raw home/away stat columns appended.
-    """
+    """For each game in season N, attach team ratings from season N-1."""
     df = games.copy()
     for col in _STAT_COLS:
         df[f"HOME_{col}"] = float("nan")
@@ -322,32 +224,12 @@ def merge_lagged_stats(
     return df
 
 
-# ---------------------------------------------------------------------------
-# Main orchestrator
-# ---------------------------------------------------------------------------
-
 def build_training_csv(
     seasons: List[str],
     output_path: str,
     dry_run: bool = False,
 ) -> Optional[pd.DataFrame]:
-    """
-    Full pipeline: pull -> schedule -> lagged stats -> save CSV.
-
-    Parameters
-    ----------
-    seasons : list[str]
-        Target seasons to include as training rows, e.g. ["2023-24", "2024-25"].
-        The previous season of each is also pulled for lagged stats.
-    output_path : str
-        Where to write the CSV.
-    dry_run : bool
-        If True, print what would be pulled and exit without making API calls.
-
-    Returns
-    -------
-    pd.DataFrame or None
-    """
+    """Full pipeline: pull -> schedule -> lagged stats -> save CSV."""
     all_seasons_needed = _season_list(seasons)
 
     if dry_run:
@@ -358,7 +240,6 @@ def build_training_csv(
         log.info("  Estimated time:       ~%d seconds", (len(seasons) + len(all_seasons_needed)) * 4)
         return None
 
-    # --- Pull game logs for target seasons ---
     log.info("Step 1/4: Pulling game logs …")
     game_frames = []
     for s in seasons:
@@ -376,7 +257,6 @@ def build_training_csv(
     all_games = pd.concat(game_frames, ignore_index=True)
     log.info("  Total games across all seasons: %d", len(all_games))
 
-    # --- Pull team stats for all seasons (including lagged) ---
     log.info("Step 2/4: Pulling team advanced stats …")
     all_team_stats: Dict[str, pd.DataFrame] = {}
     for s in all_seasons_needed:
@@ -387,11 +267,9 @@ def build_training_csv(
         except Exception as exc:
             log.error("    FAILED %s: %s", s, exc)
 
-    # --- Schedule features ---
     log.info("Step 3/4: Computing rest-day / back-to-back features …")
     all_games = build_schedule_features(all_games)
 
-    # --- Lagged team stats ---
     log.info("Step 4/4: Merging lagged team stats (season N-1 ratings) …")
     all_games = merge_lagged_stats(all_games, all_team_stats)
 
@@ -402,12 +280,10 @@ def build_training_csv(
     if dropped:
         log.warning("  Dropped %d rows with missing stats.", dropped)
 
-    # --- Save ---
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     all_games.to_csv(output_path, index=False)
     log.info("Saved %d rows -> %s", len(all_games), output_path)
 
-    # Quick sanity print
     log.info("Home-win rate: %.3f (expect 0.54-0.58)", all_games["HOME_WIN"].mean())
     log.info("Seasons:       %s", all_games["SEASON"].unique().tolist())
     log.info("Date range:    %s -> %s",
@@ -416,10 +292,6 @@ def build_training_csv(
 
     return all_games
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(

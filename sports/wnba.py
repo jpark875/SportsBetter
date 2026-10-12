@@ -1,11 +1,4 @@
-"""
-sports/wnba.py
-
-WNBA plugin.  History via stats.nba.com LeagueGameLog (league_id "10").
-
-ELO tuning: the 40-ish game season needs a faster rating (K=28) than the
-NBA's 82-game grind, and WNBA home advantage runs slightly higher.
-"""
+"""WNBA plugin."""
 
 from __future__ import annotations
 

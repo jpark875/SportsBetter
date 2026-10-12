@@ -1,22 +1,9 @@
-"""
-data_pipeline/nba_stats_client.py
-
-Throttled NBA data client built on the `nba_api` package.
-Pulls three categories of data required by the feature engineering layer:
-
-  1. Player tracking / advanced stats  (Usage %, True Shooting %)
-  2. Team advanced metrics             (Pace, OffRtg, DefRtg)
-  3. Schedule impact features          (rest days, back-to-back flags)
-
-All public methods return normalised pandas DataFrames keyed on
-`PLAYER_ID` or `GAME_ID` so they can be joined cleanly downstream.
-"""
+"""Throttled NBA data client built on the `nba_api` package."""
 
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -35,9 +22,6 @@ from config.settings import NBA_API_CALLS_PER_MINUTE, NBA_API_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Internal throttle helper
-# ---------------------------------------------------------------------------
 
 class _ThrottledCaller:
     """Enforces a per-minute rate limit on nba_api calls to avoid 429s."""
@@ -56,9 +40,7 @@ class _ThrottledCaller:
 _throttle = _ThrottledCaller()
 
 
-# ---------------------------------------------------------------------------
 # Browser-like headers required by stats.nba.com to avoid request drops
-# ---------------------------------------------------------------------------
 
 _NBA_HEADERS: Dict[str, str] = {
     "Accept": "application/json, text/plain, */*",
@@ -81,10 +63,7 @@ _RETRY_DELAYS: Tuple[int, ...] = (5, 15, 30)
 
 
 def _with_retry(fn, *args, **kwargs):
-    """
-    Call ``fn(*args, **kwargs)`` up to ``len(_RETRY_DELAYS) + 1`` times.
-    Retries only on timeout / connection errors; re-raises anything else.
-    """
+    """Call ``fn(*args, **kwargs)`` up to ``len(_RETRY_DELAYS) + 1`` times."""
     last_exc: Optional[Exception] = None
     attempts = len(_RETRY_DELAYS) + 1
     for attempt in range(1, attempts + 1):
@@ -108,21 +87,8 @@ def _with_retry(fn, *args, **kwargs):
     raise last_exc  # type: ignore[misc]
 
 
-# ---------------------------------------------------------------------------
-# Public client
-# ---------------------------------------------------------------------------
-
 class NBAStatsClient:
-    """
-    Fetches historical NBA data via the unofficial nba_api library.
-
-    Parameters
-    ----------
-    season : str
-        NBA season string, e.g. ``"2024-25"``.
-    season_type : str
-        ``"Regular Season"`` or ``"Playoffs"``.
-    """
+    """Fetches historical NBA data via the unofficial nba_api library."""
 
     def __init__(
         self,
@@ -136,25 +102,9 @@ class NBAStatsClient:
             for t in nba_teams_static.get_teams()
         }
 
-    # ------------------------------------------------------------------
-    # Player advanced / tracking stats
-    # ------------------------------------------------------------------
 
     def fetch_player_advanced_stats(self) -> pd.DataFrame:
-        """
-        Pull league-wide per-game advanced stats for all players.
-
-        Returns a DataFrame with columns including::
-
-            PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION,
-            USG_PCT, TS_PCT, AST_PCT, REB_PCT, NET_RATING,
-            PIE (Player Impact Estimate)
-
-        Returns
-        -------
-        pd.DataFrame
-            One row per player, indexed on ``PLAYER_ID``.
-        """
+        """Pull league-wide per-game advanced stats for all players."""
         logger.info("Fetching player advanced stats for %s …", self.season)
         _throttle.wait()
 
@@ -193,20 +143,7 @@ class NBAStatsClient:
         return df
 
     def fetch_player_game_log(self, player_id: int, last_n: int = 20) -> pd.DataFrame:
-        """
-        Return a player's last ``last_n`` game results with box-score columns.
-
-        Parameters
-        ----------
-        player_id : int
-        last_n : int
-            Number of most-recent games to return.
-
-        Returns
-        -------
-        pd.DataFrame
-            Columns: ``GAME_ID, GAME_DATE, MATCHUP, WL, PTS, REB, AST, …``
-        """
+        """Return a player's last ``last_n`` game results with box-score columns."""
         logger.debug("Fetching game log for player_id=%d", player_id)
         _throttle.wait()
 
@@ -223,23 +160,9 @@ class NBAStatsClient:
         df.columns = [c.upper() for c in df.columns]
         return df
 
-    # ------------------------------------------------------------------
-    # Team advanced metrics
-    # ------------------------------------------------------------------
 
     def fetch_team_advanced_stats(self) -> pd.DataFrame:
-        """
-        Pull league-wide team advanced metrics (Pace, OffRtg, DefRtg, NetRtg).
-
-        Returns
-        -------
-        pd.DataFrame
-            One row per team, indexed on ``TEAM_ID``.  Key columns::
-
-                TEAM_ID, TEAM_ABBREVIATION, PACE, OFF_RATING,
-                DEF_RATING, NET_RATING, AST_PCT, AST_TO,
-                OREB_PCT, DREB_PCT, EFG_PCT, TS_PCT
-        """
+        """Pull league-wide team advanced metrics (Pace, OffRtg, DefRtg, NetRtg)."""
         logger.info("Fetching team advanced stats for %s …", self.season)
         _throttle.wait()
 
@@ -278,34 +201,12 @@ class NBAStatsClient:
         logger.info("  → %d teams fetched.", len(df))
         return df
 
-    # ------------------------------------------------------------------
-    # Schedule impact features
-    # ------------------------------------------------------------------
 
     def fetch_schedule_features(
         self,
         team_abbreviations: Optional[List[str]] = None,
     ) -> pd.DataFrame:
-        """
-        Build rest-day and back-to-back features for every team game.
-
-        For each ``(TEAM_ID, GAME_ID)`` pair the method computes:
-
-        - ``REST_DAYS``     — calendar days since last game (capped at 7).
-        - ``IS_B2B``        — 1 if ``REST_DAYS == 1`` else 0.
-        - ``IS_B2B_FIRST``  — 1 if today is the *first* leg of a back-to-back.
-        - ``HOME``          — 1 if the team is the home side.
-
-        Parameters
-        ----------
-        team_abbreviations : list[str], optional
-            Subset of teams to process.  Defaults to all 30 franchises.
-
-        Returns
-        -------
-        pd.DataFrame
-            Keyed on ``(TEAM_ID, GAME_ID)``.
-        """
+        """Build rest-day and back-to-back features for every team game."""
         all_abbrevs = (
             team_abbreviations
             if team_abbreviations
@@ -370,19 +271,8 @@ class NBAStatsClient:
         return result
 
     def fetch_schedule_features_fast(self) -> pd.DataFrame:
-        """
-        Build schedule features from a **single** LeagueGameLog call instead
-        of the 30-endpoint TeamGameLog loop in :meth:`fetch_schedule_features`.
-
-        Produces the same schema (indexed on ``(TEAM_ID, GAME_ID)``) and is
-        the preferred method for live-scoring runs where minimising API calls
-        matters.
-
-        Returns
-        -------
-        pd.DataFrame
-            Keyed on ``(TEAM_ID, GAME_ID)`` with columns
-            ``GAME_DATE, REST_DAYS, IS_B2B, IS_B2B_FIRST, HOME``.
+        """Build schedule features from a **single** LeagueGameLog call instead of the
+        30-endpoint TeamGameLog loop in :meth:`fetch_schedule_features`.
         """
         logger.info(
             "Fetching schedule features via LeagueGameLog for %s …", self.season
@@ -420,25 +310,12 @@ class NBAStatsClient:
         logger.info("  -> %d team-game schedule rows fetched.", len(result))
         return result
 
-    # ------------------------------------------------------------------
-    # Convenience batch loader
-    # ------------------------------------------------------------------
 
     def load_all(
         self,
         team_abbreviations: Optional[List[str]] = None,
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """
-        One-shot loader that returns all three feature tables.
-
-        Uses :meth:`fetch_schedule_features_fast` (single LeagueGameLog
-        call) instead of the 30-TeamGameLog loop.
-
-        Returns
-        -------
-        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
-            ``(player_advanced, team_advanced, schedule_features)``
-        """
+        """One-shot loader that returns all three feature tables."""
         player_df = self.fetch_player_advanced_stats()
         team_df = self.fetch_team_advanced_stats()
         sched_df = self.fetch_schedule_features_fast()

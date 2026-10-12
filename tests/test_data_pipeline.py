@@ -1,4 +1,5 @@
-"""Data clients, feature engineering and sport-history fetchers, all against stubbed I/O."""
+"""Data clients, feature engineering and sport-history fetchers, all against stubbed I/O.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +14,6 @@ from data_pipeline import football_stats_client as fb
 from data_pipeline import nba_stats_client as nba
 from data_pipeline import odds_client as odds
 from predictive_model.feature_engineering import FeatureEngineer, resolve_team_id
-
-# --------------------------------------------------------------------------- odds
 
 
 EVENT = {
@@ -207,9 +206,6 @@ class TestOddsFacade:
         assert client.get_implied_probabilities(pd.DataFrame()).empty
 
 
-# --------------------------------------------------------------------- nba stats
-
-
 class FakeEndpoint:
     frames: list[pd.DataFrame] = []
 
@@ -328,9 +324,6 @@ class TestNbaClient:
         assert len(sched) == 6 and len(players) == 1 and len(teams) == 1
 
 
-# ----------------------------------------------------------------- feature table
-
-
 def _team_ids():
     return resolve_team_id("Boston Celtics"), resolve_team_id("Miami Heat")
 
@@ -419,9 +412,6 @@ class TestFeatureEngineering:
             FeatureEngineer(pd.DataFrame(), pd.DataFrame()).build_prop_features(props)
 
 
-# ------------------------------------------------------------------ football data
-
-
 def football_csvs():
     rng = np.random.default_rng(1)
     teams = ["Brazil", "Argentina", "Germany", "France", "USA", "Korea Republic"]
@@ -503,9 +493,6 @@ class TestFootballClient:
         assert set(row) >= set(
             ["HOME_ELO", "DELTA_ELO", "HOME_ATK_VS_AWAY_DEF", "IS_NEUTRAL"]
         )
-
-
-# ----------------------------------------------------------------- sport history
 
 
 class TestHistoryFetchers:

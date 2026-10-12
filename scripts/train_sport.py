@@ -1,26 +1,4 @@
-"""
-scripts/train_sport.py
-
-Unified per-sport trainer.  One command per sport, any registered sport:
-
-    python scripts/train_sport.py --sport mlb
-    python scripts/train_sport.py --sport epl mlb wnba nba   # several in a row
-
-For each sport it:
-    1. fetches full history via the sport's plugin,
-    2. builds the generic ELO/form/attack-defense feature table,
-    3. trains LightGBM — binary + isotonic calibration for 2-way sports,
-       3-class for draw sports — with a temporal 85/15 split,
-    4. reports held-out log-loss/accuracy and feature importances,
-    5. saves  <key>_model.pkl  and  <key>_state.pkl  (current ELO + latest
-       team stats + calibrator), which is everything the web app needs to
-       score live games without re-walking history.
-
-Model choice rationale: for betting, calibration beats raw accuracy —
-Kelly stakes are wrong exactly as much as the probabilities are.  Hence
-gradient boosting for signal extraction plus isotonic regression on a
-temporal holdout for honest probabilities.
-"""
+"""Unified per-sport trainer."""
 
 from __future__ import annotations
 
@@ -32,8 +10,6 @@ import sys
 import warnings
 from datetime import datetime, timezone
 
-import numpy as np
-import pandas as pd
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _ROOT not in sys.path:

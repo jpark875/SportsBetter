@@ -1,37 +1,15 @@
-"""
-portfolio_manager/optimizer.py
-
-Capital allocation engine based on Modern Portfolio Theory (MPT) and
-the fractional Kelly Criterion.
-
-Optimisation problem (simplified)
-----------------------------------
-Given N wagers with calibrated probabilities p_i, American odds o_i,
-and a covariance matrix Σ:
-
-    maximise   E[log W]  ≈  Σ_i f_i * edge_i  −  (1/2) f^T Σ f
-    subject to 0 ≤ f_i ≤ MAX_SINGLE_BET_FRACTION
-               Σ f_i ≤ MAX_PORTFOLIO_KELLY_FRACTION
-
-where  f_i  = fraction of bankroll to wager on bet i
-       edge_i = p_i * decimal_odds_i − 1  (expected value per unit wagered)
-
-The quadratic penalty term (f^T Σ f) naturally shrinks allocations to
-correlated bets, implementing the risk-adjusted Kelly derivation.
-
-The optimiser uses ``scipy.optimize.minimize`` with the SLSQP method
-(Sequential Least-Squares Programming), which handles the linear
-inequality constraints and bounds efficiently.
+"""Capital allocation engine based on Modern Portfolio Theory (MPT) and the fractional
+Kelly Criterion.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import LinearConstraint, minimize
+from scipy.optimize import minimize
 
 from config.settings import MAX_PORTFOLIO_KELLY_FRACTION, MAX_SINGLE_BET_FRACTION
 from portfolio_manager.covariance_estimator import CovarianceEstimator
@@ -43,19 +21,8 @@ MIN_EDGE_THRESHOLD: float = 0.01
 
 
 class PortfolioOptimizer:
-    """
-    Allocates capital across a slate of wagers using a correlation-aware,
-    fractional Kelly objective.
-
-    Parameters
-    ----------
-    max_portfolio_fraction : float
-        Maximum total bankroll fraction to wager across all bets combined.
-    max_single_bet_fraction : float
-        Maximum bankroll fraction on any individual bet.
-    risk_scaling : float
-        Risk-aversion multiplier applied to the covariance penalty term.
-        Higher values = more conservative allocation.  Default ``1.0``.
+    """Allocates capital across a slate of wagers using a correlation-aware, fractional
+    Kelly objective.
     """
 
     def __init__(
@@ -69,9 +36,6 @@ class PortfolioOptimizer:
         self.risk_scaling = risk_scaling
         self._result: Optional[pd.DataFrame] = None
 
-    # ------------------------------------------------------------------
-    # Main entry point
-    # ------------------------------------------------------------------
 
     def optimise(
         self,
@@ -79,43 +43,12 @@ class PortfolioOptimizer:
         cov_estimator: CovarianceEstimator,
         bankroll: float,
     ) -> pd.DataFrame:
-        """
-        Run the portfolio optimisation and return the allocation table.
-
-        Parameters
-        ----------
-        bets : pd.DataFrame
-            Must contain:
-
-            * ``bet_id``      : str   — unique identifier
-            * ``game_id``     : str
-            * ``true_prob``   : float — calibrated P(win)
-            * ``price``       : float — American odds
-            * ``bet_type``    : str
-            * ``outcome_name``: str
-            * ``bookmaker``   : str
-
-        cov_estimator : CovarianceEstimator
-            Already-fitted estimator for this slate.
-        bankroll : float
-            Effective wagerable bankroll (from risk_bridge).
-
-        Returns
-        -------
-        pd.DataFrame
-            Input bets with additional columns:
-
-            * ``edge``           — expected value per unit wagered
-            * ``kelly_fraction`` — unconstrained full-Kelly fraction
-            * ``alloc_fraction`` — portfolio-constrained allocation fraction
-            * ``wager_amount``   — dollar amount to bet
-        """
+        """Run the portfolio optimisation and return the allocation table."""
         bets = bets.copy()
         bets["edge"] = bets.apply(
             lambda r: self._compute_edge(r["true_prob"], r["price"]), axis=1
         )
 
-        # Drop negative-edge bets
         viable = bets[bets["edge"] >= MIN_EDGE_THRESHOLD].reset_index(drop=True)
         if viable.empty:
             logger.warning("No positive-edge bets found in the slate.")
@@ -137,16 +70,10 @@ class PortfolioOptimizer:
         viable_idx = [all_ids.index(bid) for bid in viable["bet_id"]]
         cov_sub = cov[np.ix_(viable_idx, viable_idx)]
 
-        # ------------------------------------------------------------------
-        # Unconstrained Kelly fractions (single-bet approximation)
-        # ------------------------------------------------------------------
         viable["kelly_fraction"] = viable.apply(
             lambda r: self._kelly_fraction(r["true_prob"], r["price"]), axis=1
         )
 
-        # ------------------------------------------------------------------
-        # Constrained optimisation
-        # ------------------------------------------------------------------
         alloc = self._run_slsqp(edges, cov_sub)
         viable["alloc_fraction"] = alloc
         viable["wager_amount"] = (viable["alloc_fraction"] * bankroll).round(2)
@@ -170,9 +97,6 @@ class PortfolioOptimizer:
         )
         return self._result
 
-    # ------------------------------------------------------------------
-    # Properties
-    # ------------------------------------------------------------------
 
     @property
     def allocation_summary(self) -> pd.DataFrame:
@@ -196,23 +120,9 @@ class PortfolioOptimizer:
         weights = alloc["alloc_fraction"] / alloc["alloc_fraction"].sum()
         return float((weights * alloc["edge"]).sum())
 
-    # ------------------------------------------------------------------
-    # SLSQP core
-    # ------------------------------------------------------------------
 
     def _run_slsqp(self, edges: np.ndarray, cov: np.ndarray) -> np.ndarray:
-        """
-        Solve the quadratic Kelly objective with SLSQP.
-
-        Objective (negated for minimisation)::
-
-            -( Σ f_i * e_i  −  (λ/2) * f^T Σ f )
-
-        Returns
-        -------
-        np.ndarray, shape (n,)
-            Optimal allocation fractions.
-        """
+        """Solve the quadratic Kelly objective with SLSQP."""
         n = len(edges)
         lam = self.risk_scaling
 
@@ -249,17 +159,10 @@ class PortfolioOptimizer:
         alloc = np.clip(result.x, 0.0, self.max_single_bet_fraction)
         return alloc
 
-    # ------------------------------------------------------------------
-    # Static helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _compute_edge(p_win: float, american_odds: float) -> float:
-        """
-        Expected value per unit wagered.
-
-        edge = p_win * decimal_payout − 1
-        """
+        """Expected value per unit wagered."""
         if american_odds >= 100:
             decimal = american_odds / 100.0 + 1.0
         else:
@@ -268,9 +171,8 @@ class PortfolioOptimizer:
 
     @staticmethod
     def _kelly_fraction(p_win: float, american_odds: float) -> float:
-        """
-        Full-Kelly fraction: f* = (b*p - q) / b
-        where b = decimal_payout − 1, q = 1 − p_win.
+        """Full-Kelly fraction: f* = (b*p - q) / b where b = decimal_payout − 1, q = 1 −
+        p_win.
         """
         if american_odds >= 100:
             b = american_odds / 100.0

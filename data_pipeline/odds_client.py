@@ -1,37 +1,8 @@
-"""
-data_pipeline/odds_client.py
-
-Live and historical odds ingestion layer.
-
-Supports two providers selectable via ``config.settings.ODDS_PROVIDER``:
-
-  * ``"theodds"``  — The Odds API  (https://the-odds-api.com)
-  * ``"oddsjam"``  — OddsJam API   (https://oddsjam.com)
-
-Every public method returns a normalised ``pd.DataFrame`` using a canonical
-schema so the rest of the pipeline is provider-agnostic.
-
-Canonical bet columns
----------------------
-    game_id          : str   — "<home_team>_<away_team>_<commence_time_date>"
-    commence_time    : datetime (UTC)
-    home_team        : str
-    away_team        : str
-    sport_key        : str   — e.g. "basketball_nba"
-    bet_type         : str   — "moneyline" | "spread" | "total" | "player_prop"
-    market_key       : str   — provider-specific market key
-    bookmaker        : str
-    outcome_name     : str   — team name, "Over"/"Under", or player name
-    price            : float — American odds integer form
-    point            : float — spread / total / prop line (NaN where not applicable)
-    player_name      : str   — populated for player_prop rows only
-    prop_stat        : str   — e.g. "points", "assists", "rebounds"
-"""
+"""Live and historical odds ingestion layer."""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -50,9 +21,6 @@ logger = logging.getLogger(__name__)
 _SESSION = requests.Session()
 _SESSION.headers.update({"Accept": "application/json"})
 
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
 
 def _get(url: str, params: Dict[str, Any]) -> Any:
     """HTTP GET with error propagation."""
@@ -75,10 +43,6 @@ def _build_game_id(home: str, away: str, commence: str) -> str:
     return f"{h}_{a}_{date_part}"
 
 
-# ---------------------------------------------------------------------------
-# The Odds API adapter
-# ---------------------------------------------------------------------------
-
 class _TheOddsAdapter:
     """Thin adapter around The Odds API v4."""
 
@@ -87,7 +51,6 @@ class _TheOddsAdapter:
         self._base = base_url
         self._sport_key = sport_key
 
-    # --- Core markets -------------------------------------------------------
 
     def fetch_game_odds(
         self,
@@ -95,24 +58,7 @@ class _TheOddsAdapter:
         bookmakers: Optional[List[str]] = None,
         regions: str = "us",
     ) -> pd.DataFrame:
-        """
-        Fetch moneyline, spreads, and totals for all live NBA games.
-
-        Parameters
-        ----------
-        markets : list[str]
-            Subset of ``["h2h", "spreads", "totals"]``.
-            Defaults to all three.
-        bookmakers : list[str], optional
-            Filter by specific bookmaker slugs, e.g. ``["draftkings", "fanduel"]``.
-        regions : str
-            ``"us"`` | ``"uk"`` | ``"eu"`` | ``"au"``.
-
-        Returns
-        -------
-        pd.DataFrame
-            Canonical schema described in module docstring.
-        """
+        """Fetch moneyline, spreads, and totals for all live NBA games."""
         markets = markets or ["h2h", "spreads", "totals"]
         params: Dict[str, Any] = {
             "apiKey": self._key,
@@ -157,28 +103,13 @@ class _TheOddsAdapter:
                         })
         return pd.DataFrame(rows)
 
-    # --- Player props -------------------------------------------------------
 
     def fetch_player_props(
         self,
         event_id: str,
         prop_markets: List[str] = None,
     ) -> pd.DataFrame:
-        """
-        Fetch player prop lines for a specific game event.
-
-        Parameters
-        ----------
-        event_id : str
-            The Odds API event ID (obtainable from the events endpoint).
-        prop_markets : list[str]
-            e.g. ``["player_points", "player_rebounds", "player_assists"]``.
-
-        Returns
-        -------
-        pd.DataFrame
-            Canonical schema with ``player_name`` and ``prop_stat`` populated.
-        """
+        """Fetch player prop lines for a specific game event."""
         prop_markets = prop_markets or [
             "player_points",
             "player_rebounds",
@@ -224,7 +155,6 @@ class _TheOddsAdapter:
                     })
         return pd.DataFrame(rows)
 
-    # --- Event list ---------------------------------------------------------
 
     def fetch_event_ids(self) -> pd.DataFrame:
         """Return a mapping of ``event_id → (home_team, away_team, commence_time)``."""
@@ -246,10 +176,6 @@ class _TheOddsAdapter:
         mapping = {"h2h": "moneyline", "spreads": "spread", "totals": "total"}
         return mapping.get(market_key, market_key)
 
-
-# ---------------------------------------------------------------------------
-# OddsJam adapter
-# ---------------------------------------------------------------------------
 
 class _OddsJamAdapter:
     """Thin adapter around the OddsJam v2 API."""
@@ -341,25 +267,8 @@ class _OddsJamAdapter:
         return "other"
 
 
-# ---------------------------------------------------------------------------
-# Unified public facade
-# ---------------------------------------------------------------------------
-
 class OddsClient:
-    """
-    Provider-agnostic odds client.
-
-    Selects the active adapter from ``config.settings.ODDS_PROVIDER``
-    at construction time.  All callers interact only with this class.
-
-    Parameters
-    ----------
-    provider : str, optional
-        Override ``ODDS_PROVIDER`` setting.  ``"theodds"`` or ``"oddsjam"``.
-    sport_key : str, optional
-        Override the sport key sent to the provider, e.g.
-        ``"basketball_nba"`` or ``"soccer_fifa_world_cup"``.
-    """
+    """Provider-agnostic odds client."""
 
     def __init__(self, provider: Optional[str] = None, sport_key: Optional[str] = None) -> None:
         from config.settings import NBA_SPORT_KEY
@@ -376,45 +285,16 @@ class OddsClient:
         logger.info("OddsClient initialised with provider='%s' sport='%s'", prov, sk)
 
     def get_game_odds(self, **kwargs) -> pd.DataFrame:
-        """
-        Fetch moneyline, spread, and total lines for tonight's slate.
-
-        Returns
-        -------
-        pd.DataFrame
-            Canonical odds schema (see module docstring).
-        """
+        """Fetch moneyline, spread, and total lines for tonight's slate."""
         return self._adapter.fetch_game_odds(**kwargs)
 
     def get_player_props(self, **kwargs) -> pd.DataFrame:
-        """
-        Fetch player prop lines.
-
-        For The Odds API, pass ``event_id=<str>`` in kwargs.
-
-        Returns
-        -------
-        pd.DataFrame
-            Canonical odds schema with ``player_name`` and ``prop_stat`` populated.
-        """
+        """Fetch player prop lines."""
         return self._adapter.fetch_player_props(**kwargs)
 
     def get_best_lines(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Reduce a multi-book odds DataFrame to the single best-priced line
-        per ``(game_id, bet_type, outcome_name, point)``.
-
-        This represents the true market edge available to a sharp bettor.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Output of :meth:`get_game_odds` or :meth:`get_player_props`.
-
-        Returns
-        -------
-        pd.DataFrame
-            One row per unique wager opportunity at the best available price.
+        """Reduce a multi-book odds DataFrame to the single best-priced line per
+        ``(game_id, bet_type, outcome_name, point)``.
         """
         if df.empty:
             return df
@@ -428,19 +308,7 @@ class OddsClient:
         return best
 
     def get_implied_probabilities(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Append ``implied_prob`` column (raw, no vig removed) to an odds DataFrame.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Any canonical odds DataFrame with a ``price`` column.
-
-        Returns
-        -------
-        pd.DataFrame
-            Input with ``implied_prob`` column appended.
-        """
+        """Append ``implied_prob`` column (raw, no vig removed) to an odds DataFrame."""
         if df.empty or "price" not in df.columns:
             return df
         df = df.copy()

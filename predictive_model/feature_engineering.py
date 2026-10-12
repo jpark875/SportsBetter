@@ -1,25 +1,11 @@
-"""
-predictive_model/feature_engineering.py
-
-Transforms raw API payloads from the data_pipeline layer into a clean,
-model-ready feature matrix.
-
-The central artefact is ``FeatureMatrix`` — a labelled DataFrame where
-every row represents one ``(game_id, team_side)`` observation and every
-column is a numeric feature ready for LightGBM / XGBoost ingestion.
-
-Key alignment contract
-----------------------
-* NBA stats tables are keyed on ``TEAM_ID`` or ``PLAYER_ID``.
-* Odds tables are keyed on ``game_id`` (see odds_client.py canonical schema).
-* This module joins them using the ``team_name → TEAM_ID`` mapping from
-  ``nba_api.stats.static.teams``.
+"""Transforms raw API payloads from the data_pipeline layer into a clean, model-ready
+feature matrix.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -27,9 +13,6 @@ from nba_api.stats.static import teams as nba_teams_static
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Static name → ID mapping
-# ---------------------------------------------------------------------------
 
 def _build_team_name_map() -> Dict[str, int]:
     """Return ``{full_name.lower(): team_id}`` and ``{abbreviation: team_id}``."""
@@ -45,35 +28,12 @@ _TEAM_NAME_MAP: Dict[str, int] = _build_team_name_map()
 
 
 def resolve_team_id(name: str) -> Optional[int]:
-    """
-    Fuzzy-resolve a team name string to a canonical ``TEAM_ID``.
-
-    Handles full names (``"Boston Celtics"``), nicknames (``"Celtics"``),
-    and three-letter abbreviations (``"BOS"``).
-    """
+    """Fuzzy-resolve a team name string to a canonical ``TEAM_ID``."""
     return _TEAM_NAME_MAP.get(name.strip().lower())
 
 
-# ---------------------------------------------------------------------------
-# Core builder
-# ---------------------------------------------------------------------------
-
 class FeatureEngineer:
-    """
-    Builds the model feature matrix by merging stats and odds data.
-
-    Parameters
-    ----------
-    team_stats : pd.DataFrame
-        Output of ``NBAStatsClient.fetch_team_advanced_stats()``.
-        Indexed on ``TEAM_ID``.
-    schedule_features : pd.DataFrame
-        Output of ``NBAStatsClient.fetch_schedule_features()``.
-        Multi-indexed on ``(TEAM_ID, GAME_ID)``.
-    player_stats : pd.DataFrame, optional
-        Output of ``NBAStatsClient.fetch_player_advanced_stats()``.
-        Indexed on ``PLAYER_ID``.  Required for prop features.
-    """
+    """Builds the model feature matrix by merging stats and odds data."""
 
     # Features that will be delta'd: home_value − away_value
     _DELTA_FEATURES: List[str] = [
@@ -98,37 +58,15 @@ class FeatureEngineer:
         self.schedule_features = schedule_features
         self.player_stats = player_stats
 
-    # ------------------------------------------------------------------
-    # Main entry point
-    # ------------------------------------------------------------------
 
     def build_game_features(self, odds_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Build one feature row per game from a canonical odds DataFrame.
-
-        Each row represents a single game; the target variable ``HOME_WIN``
-        is ``NaN`` for live (unlabelled) observations and must be populated
-        from historical outcome data before training.
-
-        Parameters
-        ----------
-        odds_df : pd.DataFrame
-            Canonical odds schema from :class:`~data_pipeline.odds_client.OddsClient`.
-            Must contain at least ``game_id``, ``home_team``, ``away_team``,
-            ``bet_type``, ``price``, ``point`` columns.
-
-        Returns
-        -------
-        pd.DataFrame
-            Feature matrix indexed on ``game_id``.
-        """
+        """Build one feature row per game from a canonical odds DataFrame."""
         games = (
             odds_df[["game_id", "home_team", "away_team", "commence_time"]]
             .drop_duplicates("game_id")
             .copy()
         )
 
-        # Attach team IDs
         games["HOME_TEAM_ID"] = games["home_team"].apply(resolve_team_id)
         games["AWAY_TEAM_ID"] = games["away_team"].apply(resolve_team_id)
 
@@ -144,13 +82,10 @@ class FeatureEngineer:
         games["HOME_TEAM_ID"] = games["HOME_TEAM_ID"].astype(int)
         games["AWAY_TEAM_ID"] = games["AWAY_TEAM_ID"].astype(int)
 
-        # --- Merge team advanced stats ------------------------------------
         games = self._merge_team_stats(games)
 
-        # --- Merge schedule / rest features --------------------------------
         games = self._merge_schedule(games, odds_df)
 
-        # --- Merge market-implied features ---------------------------------
         games = self._merge_market_features(games, odds_df)
 
         # Placeholder target (populated later from historical outcomes)
@@ -160,21 +95,7 @@ class FeatureEngineer:
         return games
 
     def build_prop_features(self, odds_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Build one feature row per player-prop wager.
-
-        Requires ``player_stats`` to have been supplied at construction.
-
-        Parameters
-        ----------
-        odds_df : pd.DataFrame
-            Canonical odds schema filtered to ``bet_type == "player_prop"``.
-
-        Returns
-        -------
-        pd.DataFrame
-            Feature matrix indexed on ``(game_id, player_name, prop_stat, outcome_name)``.
-        """
+        """Build one feature row per player-prop wager."""
         if self.player_stats is None:
             raise ValueError(
                 "player_stats must be provided to build prop features."
@@ -191,9 +112,6 @@ class FeatureEngineer:
         )
         return props
 
-    # ------------------------------------------------------------------
-    # Private merge helpers
-    # ------------------------------------------------------------------
 
     def _merge_team_stats(self, games: pd.DataFrame) -> pd.DataFrame:
         """Attach home/away advanced stats and compute difference features."""
@@ -271,9 +189,8 @@ class FeatureEngineer:
     def _merge_market_features(
         self, games: pd.DataFrame, odds_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """
-        Extract consensus market signals (best moneyline implied prob,
-        consensus spread, total line) and attach them to the games table.
+        """Extract consensus market signals (best moneyline implied prob, consensus spread,
+        total line) and attach them to the games table.
         """
         # Best moneyline for home team
         ml = odds_df[odds_df["bet_type"] == "moneyline"].copy()
@@ -312,7 +229,6 @@ class FeatureEngineer:
             )
             games = games.join(home_spread, on="game_id", how="left")
 
-        # Consensus total (O/U line)
         total = odds_df[odds_df["bet_type"] == "total"].copy()
         if not total.empty:
             over_line = (
@@ -353,9 +269,7 @@ class FeatureEngineer:
         return props
 
 
-# ---------------------------------------------------------------------------
 # Module-level utility (also used by _merge_market_features)
-# ---------------------------------------------------------------------------
 
 def _american_implied(american: float) -> float:
     if american >= 100:

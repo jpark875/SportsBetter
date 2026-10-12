@@ -1,38 +1,10 @@
-"""
-core/generic_features.py
-
-Sport-agnostic feature engine.  Any sport whose games reduce to
-
-    date | home_team | away_team | home_score | away_score
-
-gets the full feature stack for free:
-
-    ELO (with configurable K and home-advantage bonus)
-    Rolling form over the last N games (points-per-game, scores for/against)
-    Exponentially-weighted attack / defense ratings
-    Attack-vs-defense matchup ratios
-
-This is the same feature family validated on the World Cup engine
-(data_pipeline/football_stats_client.py) — DELTA_ELO and the defense
-ratings were its top-gain features — lifted out so new sports plug in
-with ~100 lines of data-fetching code instead of a bespoke pipeline.
-
-All rolling/EWM features are shift(1)-ed: a game's features only ever see
-history strictly before that game.  ELO is computed in a single forward
-chronological pass, so look-ahead is structurally impossible.
-
-Result convention (matches the WC engine):
-    RESULT = 0 → away win | 1 → draw | 2 → home win
-For sports without draws, RESULT ∈ {0, 2} and the binary training target
-is HOME_WIN = (RESULT == 2).
-"""
+"""Sport-agnostic feature engine."""
 
 from __future__ import annotations
 
 import logging
 from typing import Dict, Tuple
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -81,25 +53,7 @@ def compute_elo(
     k_factor: float = 20.0,
     hfa_elo: float = 60.0,
 ) -> Tuple[pd.DataFrame, Dict[str, float]]:
-    """
-    Single chronological pass adding pre-match HOME_ELO / AWAY_ELO / DELTA_ELO.
-
-    Parameters
-    ----------
-    k_factor : float
-        Rating volatility. Lower for long seasons (MLB ~6), higher for
-        short ones (WNBA ~24).
-    hfa_elo : float
-        Home-advantage bonus applied inside the expectation only (ratings
-        themselves stay venue-neutral). 0 for neutral-site competitions.
-
-    Returns
-    -------
-    (df, final_elo)
-        ``df`` with the three ELO columns; ``final_elo`` maps every team to
-        its post-history rating — exactly what live scoring needs, without
-        a second pass.
-    """
+    """Single chronological pass adding pre-match HOME_ELO / AWAY_ELO / DELTA_ELO."""
     elo: Dict[str, float] = {}
     home_elos, away_elos = [], []
     actual_map = {2: 1.0, 1: 0.5, 0: 0.0}
@@ -143,13 +97,7 @@ def compute_form_and_ratings(
     form_window: int = 5,
     ewm_span: int = 7,
 ) -> pd.DataFrame:
-    """
-    Add rolling-form and EWM attack/defense columns (all shift(1)-ed).
-
-    Form: mean pts (3/1/0) and scores for/against over the last
-    ``form_window`` games.  Ratings: EWM (span=``ewm_span``) of scores
-    for (attack) and against (defense), plus cross-matchup ratios.
-    """
+    """Add rolling-form and EWM attack/defense columns (all shift(1)-ed)."""
     long = _long_appearance_table(matches)
 
     grouped = long.groupby("team")
@@ -198,11 +146,7 @@ def build_feature_table(
     form_window: int = 5,
     ewm_span: int = 7,
 ) -> Tuple[pd.DataFrame, Dict[str, float]]:
-    """
-    Full pipeline: RESULT/game_id → ELO → form + ratings.
-
-    Returns ``(feature_df, final_elo)``.
-    """
+    """Full pipeline: RESULT/game_id → ELO → form + ratings."""
     df = add_result_column(matches)
     df, final_elo = compute_elo(df, k_factor=k_factor, hfa_elo=hfa_elo)
     df = compute_form_and_ratings(df, form_window=form_window, ewm_span=ewm_span)
@@ -210,14 +154,7 @@ def build_feature_table(
 
 
 def latest_team_stats(feature_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Each team's most recent post-game rolling stats, for live scoring.
-
-    Returns a DataFrame indexed on team with columns
-    ``form, sf, sa, atk, def_r``.  Values come from the long appearance
-    table *without* the shift — i.e. they include the team's latest game,
-    which is exactly the history available before their next one.
-    """
+    """Each team's most recent post-game rolling stats, for live scoring."""
     long = _long_appearance_table(feature_df)
     grouped = long.groupby("team")
     # No shift here: for a FUTURE game, every played game is valid history.
@@ -240,12 +177,7 @@ def build_scoring_row(
     latest_stats: pd.DataFrame,
     default_score: float,
 ) -> Dict[str, float]:
-    """
-    Feature dict for one upcoming game, matching GENERIC_FEATURE_COLS.
-
-    ``default_score`` is the sport's typical per-game score (runs, goals,
-    points) used as prior for teams absent from history.
-    """
+    """Feature dict for one upcoming game, matching GENERIC_FEATURE_COLS."""
     h_elo = current_elo.get(home_team, _INITIAL_ELO)
     a_elo = current_elo.get(away_team, _INITIAL_ELO)
 

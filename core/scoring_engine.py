@@ -1,22 +1,4 @@
-"""
-core/scoring_engine.py
-
-The single scoring path shared by the web app and the CLI.  Given a
-registered sport key it:
-
-    loads that sport's trained model + saved state (current ELO, latest
-    team stats, calibrator),
-    pulls the live slate from the odds provider,
-    builds one generic feature row per game,
-    predicts calibrated win probabilities (2-way or 3-way),
-    joins them to the best available price per outcome,
-    computes edge, full-Kelly, and a correlation-aware allocation.
-
-Nothing here is sport-specific: every branch that differs between, say,
-MLB and the Premier League is driven by the plugin's :class:`SportConfig`
-(``has_draws``, ``default_score``) and the state saved at train time.
-That's what makes a new sport a drop-in.
-"""
+"""The single scoring path shared by the web app and the CLI."""
 
 from __future__ import annotations
 
@@ -76,13 +58,7 @@ def score_slate(
     risk_manager: RiskManager,
     provider: Optional[str] = None,
 ) -> SlateResult:
-    """
-    Score today's live slate for one sport.
-
-    Never raises for the ordinary "no games / not trained / no edges"
-    cases — those come back as a populated ``message`` so the web layer
-    can show them plainly.
-    """
+    """Score today's live slate for one sport."""
     plugin = get_plugin(sport_key)
     cfg = plugin.config
     result = SlateResult(
@@ -99,7 +75,6 @@ def score_slate(
         )
         return result
 
-    # --- live odds ----------------------------------------------------
     odds_client = OddsClient(provider=provider, sport_key=cfg.odds_sport_key)
     try:
         odds_df = odds_client.get_game_odds(markets=["h2h"])
@@ -114,10 +89,8 @@ def score_slate(
     odds_df = odds_client.get_implied_probabilities(odds_df)
     result.n_games = int(odds_df["game_id"].nunique())
 
-    # --- arbitrage (independent of our model) -------------------------
     result.arbitrage = scan_h2h_arbitrage(odds_df)
 
-    # --- model + saved state -----------------------------------------
     trainer = ModelTrainer.load(plugin.model_path)
     state = _load_state(plugin)
     current_elo: Dict[str, float] = state["current_elo"]
@@ -125,7 +98,6 @@ def score_slate(
     calibrator = state.get("calibrator")
     feature_cols: List[str] = state["feature_cols"]
 
-    # --- one feature row per game ------------------------------------
     games = (
         odds_df[["game_id", "home_team", "away_team", "commence_time"]]
         .drop_duplicates("game_id")
@@ -146,7 +118,6 @@ def score_slate(
     feat_df = pd.DataFrame(rows).set_index("game_id")
     score_X = feat_df[feature_cols].fillna(feat_df[feature_cols].median())
 
-    # --- probabilities -----------------------------------------------
     # prob_by_game[game_id] = {"home": p, "draw": p, "away": p}
     prob_by_game: Dict[str, Dict[str, float]] = {}
     if cfg.has_draws:
@@ -169,7 +140,6 @@ def score_slate(
         result.message = "Odds and model team names could not be aligned for any game."
         return result
 
-    # --- allocation ---------------------------------------------------
     positive = result.bets[result.bets["edge"] > 0].copy()
     if positive.empty:
         result.message = "No positive-edge bets in the current slate (market looks efficient)."

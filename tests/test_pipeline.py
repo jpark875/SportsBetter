@@ -1,11 +1,4 @@
-"""
-tests/test_pipeline.py
-
-Unit and integration smoke-tests for the NBA Bet Portfolio Engine.
-
-Run with:
-    pytest tests/ -v
-"""
+"""Unit and integration smoke-tests for the NBA Bet Portfolio Engine."""
 
 from __future__ import annotations
 
@@ -19,10 +12,6 @@ from portfolio_manager.optimizer import PortfolioOptimizer
 from predictive_model.probability_calibrator import IsotonicCalibrator
 from risk_bridge.risk_manager import RiskManager
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def sample_bets() -> pd.DataFrame:
@@ -57,10 +46,6 @@ def fitted_covariance(sample_bets) -> CovarianceEstimator:
     return est
 
 
-# ---------------------------------------------------------------------------
-# CovarianceEstimator tests
-# ---------------------------------------------------------------------------
-
 class TestCovarianceEstimator:
     def test_fit_produces_square_matrix(self, sample_bets):
         est = CovarianceEstimator(n_sim=500)
@@ -93,10 +78,6 @@ class TestCovarianceEstimator:
         with pytest.raises(RuntimeError):
             _ = est.covariance_matrix
 
-
-# ---------------------------------------------------------------------------
-# PortfolioOptimizer tests
-# ---------------------------------------------------------------------------
 
 class TestPortfolioOptimizer:
     def test_optimise_returns_dataframe(self, sample_bets, fitted_covariance):
@@ -143,10 +124,6 @@ class TestPortfolioOptimizer:
         assert opt.expected_portfolio_edge >= 0.0
 
 
-# ---------------------------------------------------------------------------
-# IsotonicCalibrator tests
-# ---------------------------------------------------------------------------
-
 class TestIsotonicCalibrator:
     def test_fit_transform_shape(self):
         rng = np.random.default_rng(0)
@@ -182,10 +159,6 @@ class TestIsotonicCalibrator:
         with pytest.raises(RuntimeError):
             cal.transform(np.array([0.5]))
 
-
-# ---------------------------------------------------------------------------
-# RiskManager tests
-# ---------------------------------------------------------------------------
 
 class TestRiskManager:
     def test_constraint_derivation(self):

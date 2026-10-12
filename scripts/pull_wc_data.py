@@ -1,21 +1,5 @@
-"""
-scripts/pull_wc_data.py
-
-Download the international football results dataset and build the
-World Cup training CSV.
-
-No API key needed — data comes from the public GitHub dataset
-maintained by martj42 (updated daily during tournaments).
-
-Output
-------
-  data/wc_training_features.csv
-
-Usage
------
-  python scripts/pull_wc_data.py
-  python scripts/pull_wc_data.py --from-year 1990
-  python scripts/pull_wc_data.py --wc-only   # World Cup + qualifiers only
+"""Download the international football results dataset and build the World Cup training
+CSV.
 """
 
 from __future__ import annotations

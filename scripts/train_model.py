@@ -1,29 +1,5 @@
-"""
-scripts/train_model.py
-
-Trains the LightGBM win-probability model from a local CSV file produced
-by pull_training_data.py.  Requires NO API keys.
-
-What it does
-------------
-1. Loads data/training_features.csv
-2. Defines the stats-only feature set (no market odds required)
-3. Temporal train/test split — trains on all-but-last-season, tests on last
-4. Trains LightGBM with 5-fold cross-validation
-5. Fits an Isotonic Regression calibrator on out-of-fold predictions
-6. Prints a full evaluation report
-7. Saves artefacts/lgbm_win_prob.pkl and artefacts/isotonic_calibrator.pkl
-
-Usage
------
-  # Run after pull_training_data.py has finished:
-  python scripts/train_model.py
-
-  # Override the CSV path or artefact directory:
-  python scripts/train_model.py --data data/training_features.csv --artefacts artefacts/
-
-  # Quick smoke-test on a small sample:
-  python scripts/train_model.py --sample 500
+"""Trains the LightGBM win-probability model from a local CSV file produced by
+pull_training_data.py.
 """
 
 from __future__ import annotations
@@ -56,9 +32,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("train")
 
-# ---------------------------------------------------------------------------
 # Feature columns — stats only, no market odds required
-# ---------------------------------------------------------------------------
 # These are the columns produced by pull_training_data.py.
 # At *prediction* time, main.py will also have ML_IMPLIED_HOME_PROB,
 # CONSENSUS_SPREAD, and CONSENSUS_TOTAL from the live odds feed.
@@ -76,7 +50,6 @@ TRAINING_FEATURE_COLS = [
     "DELTA_DREB_PCT",
     "DELTA_EFG_PCT",
     "DELTA_TS_PCT",
-    # Schedule / fatigue
     "HOME_REST_DAYS",
     "AWAY_REST_DAYS",
     "HOME_IS_B2B",
@@ -85,10 +58,6 @@ TRAINING_FEATURE_COLS = [
     "AWAY_IS_B2B_FIRST",
 ]
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _load_and_validate(path: str, sample: int) -> pd.DataFrame:
     if not os.path.exists(path):
@@ -154,15 +123,8 @@ def _ece(y_true: np.ndarray, y_pred: np.ndarray, n_bins: int = 10) -> float:
     return float(ece)
 
 
-# ---------------------------------------------------------------------------
-# Main training routine
-# ---------------------------------------------------------------------------
-
 def train(data_path: str, artefacts_dir: str, sample: int) -> None:
 
-    # ------------------------------------------------------------------
-    # 1. Load data
-    # ------------------------------------------------------------------
     df = _load_and_validate(data_path, sample)
     log.info("Home-win rate: %.3f | Date range: %s → %s",
              df["HOME_WIN"].mean(),
@@ -181,9 +143,6 @@ def train(data_path: str, artefacts_dir: str, sample: int) -> None:
     X_train = X_train.fillna(X_train.median())
     X_test  = X_test.fillna(X_train.median())   # use train medians for test
 
-    # ------------------------------------------------------------------
-    # 2. Train LightGBM
-    # ------------------------------------------------------------------
     log.info("Training LightGBM …")
     trainer = ModelTrainer(
         backend="lgbm",
@@ -203,21 +162,16 @@ def train(data_path: str, artefacts_dir: str, sample: int) -> None:
     )
     trainer.fit(X_train, y_train)
 
-    # Cross-val log-loss
     log.info("Running 5-fold cross-validation …")
     mean_ll, std_ll = trainer.cross_val_log_loss(X_train, y_train, n_splits=5)
     log.info("  CV log-loss: %.4f +/- %.4f", mean_ll, std_ll)
 
-    # Raw test-set metrics
     raw_train_probs = trainer.predict_proba(X_train)
     raw_test_probs  = trainer.predict_proba(X_test)
     log.info("Raw (uncalibrated) metrics:")
     _print_metrics("train (in-sample)",  y_train.to_numpy(), raw_train_probs)
     _print_metrics("test  (out-of-fold)", y_test.to_numpy(),  raw_test_probs)
 
-    # ------------------------------------------------------------------
-    # 3. Calibrate with out-of-fold predictions
-    # ------------------------------------------------------------------
     log.info("Fitting isotonic calibrator (5-fold OOF) …")
 
     X_clean = X_train.copy()
@@ -249,9 +203,6 @@ def train(data_path: str, artefacts_dir: str, sample: int) -> None:
     else:
         final_test_probs = cal_test_probs
 
-    # ------------------------------------------------------------------
-    # 4. Evaluation report
-    # ------------------------------------------------------------------
     log.info("")
     log.info("=" * 65)
     log.info("  FINAL EVALUATION REPORT")
@@ -268,7 +219,6 @@ def train(data_path: str, artefacts_dir: str, sample: int) -> None:
         bar = "#" * int(score / trainer.feature_importances.max() * 30)
         log.info("    %-28s %s  %.0f", feat, bar, score)
 
-    # Grade the model
     auc = roc_auc_score(y_test.to_numpy(), final_test_probs)
     bs  = brier_score_loss(y_test.to_numpy(), final_test_probs)
     ll  = log_loss(y_test.to_numpy(), final_test_probs)
@@ -277,9 +227,6 @@ def train(data_path: str, artefacts_dir: str, sample: int) -> None:
     _grade("Brier Score", bs,  good=0.228, ok=0.232, direction="lower")
     _grade("Log-Loss",    ll,  good=0.640, ok=0.660, direction="lower")
 
-    # ------------------------------------------------------------------
-    # 5. Save artefacts
-    # ------------------------------------------------------------------
     os.makedirs(artefacts_dir, exist_ok=True)
     model_path = os.path.join(artefacts_dir, "lgbm_win_prob.pkl")
     cal_path   = os.path.join(artefacts_dir, "isotonic_calibrator.pkl")
@@ -312,10 +259,6 @@ def _grade(metric: str, value: float, good: float, ok: float, direction: str) ->
             tag = "POOR"
     log.info("  [%s]  %-14s %.4f", tag, metric, value)
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(

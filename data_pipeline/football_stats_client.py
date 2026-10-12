@@ -1,40 +1,5 @@
-"""
-data_pipeline/football_stats_client.py
-
-Builds soccer / World Cup feature matrices from two public GitHub datasets
-(martj42/international_results — no API key required):
-
-    results.csv      ~49k international matches back to 1872
-    goalscorers.csv  individual goal records tied to each match
-
-Features computed (all with strict no-look-ahead):
-
-    ELO
-      HOME_ELO / AWAY_ELO / DELTA_ELO
-          Classic ELO with variable K-factors per tournament type.
-
-    Rolling form  (last 5 competitive matches, shift(1))
-      HOME/AWAY_FORM_LAST5         avg points (3/1/0) per match
-      HOME/AWAY_GOALS_FOR_LAST5    avg goals scored
-      HOME/AWAY_GOALS_AGAINST_LAST5
-
-    EWM attack / defense ratings  (span=7, shift(1))
-      HOME/AWAY_ATK_RATING         exp-weighted avg goals scored
-      HOME/AWAY_DEF_RATING         exp-weighted avg goals conceded
-
-    Attack-vs-defense matchup scores
-      HOME_ATK_VS_AWAY_DEF         home attack divided by away defense
-      AWAY_ATK_VS_HOME_DEF         away attack divided by home defense
-      (values >1 mean the attacking team scores more than opponent concedes)
-
-    Player star concentration  (last 20 competitive matches, shift(1))
-      HOME/AWAY_STAR_CONC          top scorer's share of team's goals
-      0 = distributed scorer pool, 1 = one player scores everything
-
-    Venue
-      IS_NEUTRAL                   1 for all World Cup matches
-
-Target: RESULT   0=away win  |  1=draw  |  2=home win
+"""Builds soccer / World Cup feature matrices from two public GitHub datasets
+(martj42/international_results — no API key required).
 """
 
 from __future__ import annotations
@@ -49,9 +14,6 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# ELO constants
-# ---------------------------------------------------------------------------
 
 _INITIAL_ELO: float = 1500.0
 
@@ -72,9 +34,7 @@ _K_MAP: Dict[str, int] = {
 _K_FRIENDLY = 10
 _K_DEFAULT  = 30
 
-# ---------------------------------------------------------------------------
 # Team-name normalisation — TheOddsAPI <-> historical dataset
-# ---------------------------------------------------------------------------
 
 _NAME_MAP: Dict[str, str] = {
     "usa":                  "United States",
@@ -100,10 +60,6 @@ def normalize_name(name: str) -> str:
     return _NAME_MAP.get(name.strip().lower(), name.strip())
 
 
-# ---------------------------------------------------------------------------
-# ELO helpers
-# ---------------------------------------------------------------------------
-
 def _k_factor(tournament: str) -> int:
     t = tournament.lower()
     if "friendly" in t:
@@ -118,18 +74,8 @@ def _elo_expected(rating_a: float, rating_b: float) -> float:
     return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / 400.0))
 
 
-# ---------------------------------------------------------------------------
-# Data loading
-# ---------------------------------------------------------------------------
-
 def load_data(url: str) -> pd.DataFrame:
-    """
-    Download the international results CSV from GitHub.
-
-    Returns a clean DataFrame with columns:
-        date, home_team, away_team, home_score, away_score,
-        tournament, neutral, RESULT (0=away 1=draw 2=home)
-    """
+    """Download the international results CSV from GitHub."""
     logger.info("Downloading international results from %s …", url)
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
@@ -163,12 +109,7 @@ def load_data(url: str) -> pd.DataFrame:
 
 
 def load_goalscorers(url: str) -> pd.DataFrame:
-    """
-    Download the goalscorers CSV from GitHub.
-
-    Returns a DataFrame with columns:
-        date, home_team, away_team, team, scorer, own_goal, penalty
-    """
+    """Download the goalscorers CSV from GitHub."""
     logger.info("Downloading goalscorer data …")
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
@@ -185,15 +126,8 @@ def load_goalscorers(url: str) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# ELO computation
-# ---------------------------------------------------------------------------
-
 def compute_elo_history(matches: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add HOME_ELO, AWAY_ELO, DELTA_ELO (rating BEFORE each match).
-    Iterates chronologically — future matches cannot contaminate ratings.
-    """
+    """Add HOME_ELO, AWAY_ELO, DELTA_ELO (rating BEFORE each match)."""
     elo: Dict[str, float] = {}
     home_elos, away_elos = [], []
 
@@ -217,21 +151,13 @@ def compute_elo_history(matches: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Rolling form features
-# ---------------------------------------------------------------------------
-
 def compute_form_history(
     matches: pd.DataFrame,
     window: int = 5,
     competitive_only: bool = True,
 ) -> pd.DataFrame:
-    """
-    Add shift(1) rolling-average form columns from each team's last ``window``
+    """Add shift(1) rolling-average form columns from each team's last ``window``
     competitive matches.
-
-    New columns: HOME/AWAY_FORM_LAST5,
-                 HOME/AWAY_GOALS_FOR_LAST5, HOME/AWAY_GOALS_AGAINST_LAST5
     """
     src = matches.copy()
     if competitive_only:
@@ -275,25 +201,12 @@ def compute_form_history(
     return df
 
 
-# ---------------------------------------------------------------------------
-# EWM attack / defense ratings
-# ---------------------------------------------------------------------------
-
 def compute_attack_defense_ratings(
     matches: pd.DataFrame,
     span: int = 7,
 ) -> pd.DataFrame:
-    """
-    Add exponentially-weighted attack and defense ratings (span≈7 = ~4-match
-    half-life so recent performances carry more weight than a simple average).
-
-    All values are shifted by 1 so only pre-match history is used.
-
-    New columns:
-        HOME/AWAY_ATK_RATING         EWM goals scored per match
-        HOME/AWAY_DEF_RATING         EWM goals conceded per match
-        HOME_ATK_VS_AWAY_DEF         home attack / away defense  (>1 = mismatch)
-        AWAY_ATK_VS_HOME_DEF         away attack / home defense
+    """Add exponentially-weighted attack and defense ratings (span≈7 = ~4-match half-life
+    so recent performances carry more weight than a simple average).
     """
     home_side = matches[["game_id", "date", "home_team", "home_score", "away_score"]].copy()
     home_side = home_side.rename(columns={"home_team": "team",
@@ -333,24 +246,13 @@ def compute_attack_defense_ratings(
     return df
 
 
-# ---------------------------------------------------------------------------
-# Player star-concentration feature
-# ---------------------------------------------------------------------------
-
 def compute_player_concentration(
     matches: pd.DataFrame,
     goalscorers: pd.DataFrame,
     window: int = 20,
 ) -> pd.DataFrame:
-    """
-    For each match, compute each team's goal-scoring concentration over their
-    last ``window`` competitive appearances before that date.
-
-    Concentration = goals by team's top scorer / total team goals.
-    A value near 1.0 means one player carries the scoring load (high risk
-    if that player is absent); near 0 means distributed scoring.
-
-    New columns: HOME_STAR_CONC, AWAY_STAR_CONC
+    """For each match, compute each team's goal-scoring concentration over their last
+    ``window`` competitive appearances before that date.
     """
     # Use only non-own-goal records in competitive matches
     gs = goalscorers[~goalscorers["own_goal"]].copy()
@@ -400,7 +302,6 @@ def compute_player_concentration(
 
     star_conc_map = comp_matches.set_index(["game_id", "team"])["star_conc"]
 
-    # Join home and away
     df = matches.copy()
     df["HOME_STAR_CONC"] = df.apply(
         lambda r: star_conc_map.get((r["game_id"], r["home_team"]), np.nan), axis=1
@@ -411,10 +312,6 @@ def compute_player_concentration(
     return df
 
 
-# ---------------------------------------------------------------------------
-# Full training feature builder
-# ---------------------------------------------------------------------------
-
 def build_training_features(
     url: str,
     goalscorers_url: str,
@@ -422,22 +319,7 @@ def build_training_features(
     filter_wc_and_competitive: bool = False,
     output_path: Optional[str] = None,
 ) -> pd.DataFrame:
-    """
-    Download both datasets, compute all features, return training DataFrame.
-
-    Parameters
-    ----------
-    url : str
-        URL of the results CSV.
-    goalscorers_url : str
-        URL of the goalscorers CSV.
-    min_year : int
-        Drop rows before this year (keeps ELO warm-up period out of training).
-    filter_wc_and_competitive : bool
-        If True, keep only World Cup + qualifiers + continental tournaments.
-    output_path : str, optional
-        Write CSV here if provided.
-    """
+    """Download both datasets, compute all features, return training DataFrame."""
     import os
 
     raw = load_data(url)
@@ -488,24 +370,11 @@ def build_training_features(
     return df
 
 
-# ---------------------------------------------------------------------------
-# Live-scoring helpers
-# ---------------------------------------------------------------------------
-
 def get_current_state(
     matches: pd.DataFrame,
 ) -> Tuple[Dict[str, float], pd.DataFrame]:
-    """
-    Extract the latest per-team snapshot from a fully-computed historical
-    DataFrame (must already have ELO, ATK, DEF, form, and star-conc columns).
-
-    Returns
-    -------
-    current_elo : dict[str, float]
-        Post-match ELO for every team after their most recent game.
-    latest_stats : pd.DataFrame
-        Indexed on ``team``.  Columns used by :func:`build_scoring_row`:
-        form, gf, ga, atk, def_r, atk_vs_def, star_conc
+    """Extract the latest per-team snapshot from a fully-computed historical DataFrame
+    (must already have ELO, ATK, DEF, form, and star-conc columns).
     """
     # Recompute final ELO for each team by walking the full history
     elo: Dict[str, float] = {}
@@ -565,18 +434,7 @@ def build_scoring_row(
     latest_stats: pd.DataFrame,
     is_neutral: bool = True,
 ) -> Dict[str, float]:
-    """
-    Build the complete feature dict for one live game.
-
-    Parameters
-    ----------
-    home_team, away_team : str
-        Normalised names (pass through :func:`normalize_name` first).
-    current_elo : dict
-        From :func:`get_current_state`.
-    latest_stats : pd.DataFrame
-        From :func:`get_current_state`, indexed on team name.
-    """
+    """Build the complete feature dict for one live game."""
     h_elo = current_elo.get(home_team, _INITIAL_ELO)
     a_elo = current_elo.get(away_team, _INITIAL_ELO)
 

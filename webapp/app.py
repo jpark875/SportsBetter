@@ -1,19 +1,4 @@
-"""
-webapp/app.py
-
-Flask application factory for the Value Betting Engine web UI.
-
-Design notes
-------------
-* One shared :class:`~webapp.store.Store` (SQLite) holds the risk profile
-  and bet ledger.
-* Live slates are scored on demand through :func:`core.scoring_engine.score_slate`
-  and cached in-process for ``SLATE_TTL`` seconds — every score costs one
-  odds-provider API call, so a refresh within the window is served from
-  cache rather than burning quota.
-* Every route degrades gracefully: a sport with no trained model, no live
-  games, or no edges renders an explanatory panel rather than an error.
-"""
+"""Flask application factory for the Value Betting Engine web UI."""
 
 from __future__ import annotations
 
@@ -48,9 +33,6 @@ def create_app(store: Optional[Store] = None) -> Flask:
     store = store or Store()
     _slate_cache: Dict[str, Tuple[float, SlateResult]] = {}
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _risk_manager() -> RiskManager:
         p = store.get_profile()
@@ -79,9 +61,6 @@ def create_app(store: Optional[Store] = None) -> Flask:
             ]
         }
 
-    # ------------------------------------------------------------------
-    # Dashboard
-    # ------------------------------------------------------------------
 
     @app.route("/")
     def dashboard():
@@ -106,9 +85,6 @@ def create_app(store: Optional[Store] = None) -> Flask:
             pending_count=len(pending),
         )
 
-    # ------------------------------------------------------------------
-    # Per-sport slate
-    # ------------------------------------------------------------------
 
     @app.route("/slate/<sport_key>")
     def slate(sport_key: str):
@@ -147,9 +123,7 @@ def create_app(store: Optional[Store] = None) -> Flask:
             arbitrage=arbitrage,
         )
 
-    # ------------------------------------------------------------------
     # Place / settle / delete bets
-    # ------------------------------------------------------------------
 
     @app.route("/bet/place", methods=["POST"])
     def place_bet():
@@ -186,9 +160,6 @@ def create_app(store: Optional[Store] = None) -> Flask:
         flash(f"Bet #{bet_id} deleted.", "success")
         return redirect(url_for("history"))
 
-    # ------------------------------------------------------------------
-    # History + risk analytics
-    # ------------------------------------------------------------------
 
     @app.route("/history")
     def history():
@@ -203,9 +174,6 @@ def create_app(store: Optional[Store] = None) -> Flask:
             curve=curve,
         )
 
-    # ------------------------------------------------------------------
-    # Parlay analyzer
-    # ------------------------------------------------------------------
 
     @app.route("/parlay", methods=["GET", "POST"])
     def parlay():
@@ -235,9 +203,6 @@ def create_app(store: Optional[Store] = None) -> Flask:
                 flash("Add at least two valid legs (probability 0-1, decimal odds > 1).", "error")
         return render_template("parlay.html", analysis=analysis, legs=legs_input)
 
-    # ------------------------------------------------------------------
-    # Settings (risk profile)
-    # ------------------------------------------------------------------
 
     @app.route("/settings", methods=["GET", "POST"])
     def settings():
@@ -279,14 +244,7 @@ def create_app(store: Optional[Store] = None) -> Flask:
 
 
 def _chart_svg(curve: List[Dict], width: int = 640, height: int = 220) -> Markup:
-    """
-    Render a cumulative-P&L line chart as inline, dependency-free SVG.
-
-    Server-side SVG keeps the page fully functional without JavaScript and
-    lets the chart inherit the theme's colours via ``currentColor``. The
-    parent element supplies an ``aria-label`` describing the trend, so this
-    is decorative (``aria-hidden``) at the SVG level.
-    """
+    """Render a cumulative-P&L line chart as inline, dependency-free SVG."""
     pad = 28
     pnls = [p["pnl"] for p in curve]
     n = len(curve)

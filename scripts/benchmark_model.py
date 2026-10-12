@@ -1,37 +1,4 @@
-"""
-scripts/benchmark_model.py
-
-Full ML pipeline efficiency benchmark.
-Requires NO API keys.  All data is generated synthetically.
-
-What this script validates
---------------------------
-1.  Data generation      -- synthetic dataset mirrors real NBA distributions.
-2.  Model training       -- LightGBM fits without errors and converges.
-3.  Probability output   -- raw scores are sensible (not all 0 or 1).
-4.  Calibration          -- Isotonic Regression reduces ECE below threshold.
-5.  Discrimination       -- ROC-AUC and Brier Score exceed market baseline.
-6.  Portfolio integration-- CovarianceEstimator + Optimizer run end-to-end.
-7.  Risk bridge          -- constraints scale correctly with tolerance.
-
-Pass/fail thresholds
---------------------
-These are the MINIMUM bars the pipeline must clear on synthetic data.
-Real-data performance will differ; see the README for production targets.
-
-    ROC-AUC (model)      >= 0.58   (market baseline ~0.56)
-    Brier Score (model)  <= 0.232  (market baseline ~0.235)
-    Log-loss (model)     <= 0.665  (market baseline ~0.675)
-    ECE after calibration <= 0.030
-    Covariance PD check  -- matrix must be positive semi-definite
-    Optimizer feasibility -- SLSQP must find a non-trivial solution
-
-Run
----
-    python scripts/benchmark_model.py
-    python scripts/benchmark_model.py --verbose
-    python scripts/benchmark_model.py --seasons 6 --games 1230
-"""
+"""Full ML pipeline efficiency benchmark."""
 
 from __future__ import annotations
 
@@ -73,9 +40,6 @@ from sklearn.metrics import (
     log_loss,
 )
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 
 logging.basicConfig(
     level=logging.WARNING,       # suppress internal module chatter
@@ -83,21 +47,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("benchmark")
 
-# ---------------------------------------------------------------------------
-# Thresholds
-# ---------------------------------------------------------------------------
 
 THRESHOLDS: Dict[str, Tuple[str, float]] = {
-    # metric_name: (direction, threshold)
     "roc_auc":         (">=", 0.58),
     "brier_score":     ("<=", 0.232),
     "log_loss":        ("<=", 0.665),
     "ece_calibrated":  ("<=", 0.030),
 }
 
-# ---------------------------------------------------------------------------
 # ANSI colour helpers (works on Windows with ANSI support, safe to ignore)
-# ---------------------------------------------------------------------------
 
 _GREEN  = "\033[32m"
 _RED    = "\033[31m"
@@ -121,10 +79,6 @@ def _fail(val: str) -> str:
 def _info(val: str) -> str:
     return _c(f"  INFO  {val}", _YELLOW)
 
-
-# ---------------------------------------------------------------------------
-# Benchmark sections
-# ---------------------------------------------------------------------------
 
 def section(title: str) -> None:
     width = 68
@@ -151,10 +105,6 @@ def check(
     return ok
 
 
-# ---------------------------------------------------------------------------
-# Step 1 -- Data generation
-# ---------------------------------------------------------------------------
-
 def step_data(n_seasons: int, games_per_season: int, verbose: bool) -> SyntheticNBADataset:
     section("1 / 7  -  Synthetic Data Generation")
     t0 = time.perf_counter()
@@ -175,7 +125,6 @@ def step_data(n_seasons: int, games_per_season: int, verbose: bool) -> Synthetic
     print(_info(f"Feature columns    : {len(ds.feature_names())}"))
     print(_info(f"Generated in       : {elapsed:.2f}s"))
 
-    # Basic sanity checks
     ok = True
     ok &= check("Home-win rate", win_rate, ">=", 0.50, extra="home advantage expected")
     ok &= check("Home-win rate", win_rate, "<=", 0.62, extra="should not be unrealistically high")
@@ -188,10 +137,6 @@ def step_data(n_seasons: int, games_per_season: int, verbose: bool) -> Synthetic
 
     return ds
 
-
-# ---------------------------------------------------------------------------
-# Step 2 -- Model training
-# ---------------------------------------------------------------------------
 
 def step_train(
     X_train: pd.DataFrame,
@@ -216,7 +161,7 @@ def step_train(
     trainer.fit(X_train, y_train)
     elapsed = time.perf_counter() - t0
 
-    print(_info(f"Backend            : LightGBM"))
+    print(_info("Backend            : LightGBM"))
     print(_info(f"Training samples   : {len(X_train):,}"))
     print(_info(f"Features used      : {len(trainer.feature_cols_)}"))
     print(_info(f"Fit time           : {elapsed:.2f}s"))
@@ -228,7 +173,6 @@ def step_train(
             bar = "#" * int(importance / fi.max() * 30)
             print(f"    {feat:<30} {bar}  {importance:.1f}")
 
-    # Cross-val log-loss (5-fold)
     print("\n  Running 5-fold cross-validation -")
     cv_t0 = time.perf_counter()
     mean_ll, std_ll = trainer.cross_val_log_loss(X_train, y_train, n_splits=5)
@@ -237,10 +181,6 @@ def step_train(
 
     return trainer
 
-
-# ---------------------------------------------------------------------------
-# Step 3 -- Raw probability check
-# ---------------------------------------------------------------------------
 
 def step_raw_probs(
     trainer: ModelTrainer,
@@ -268,10 +208,6 @@ def step_raw_probs(
 
     return raw_probs
 
-
-# ---------------------------------------------------------------------------
-# Step 4 -- Calibration
-# ---------------------------------------------------------------------------
 
 def step_calibration(
     trainer: ModelTrainer,
@@ -348,10 +284,6 @@ def step_calibration(
     return calibrator, final_probs
 
 
-# ---------------------------------------------------------------------------
-# Step 5 -- Discrimination vs market baseline
-# ---------------------------------------------------------------------------
-
 def step_discrimination(
     y_test: pd.Series,
     cal_probs: np.ndarray,
@@ -359,7 +291,6 @@ def step_discrimination(
 ) -> bool:
     section("5 / 7  -  Discrimination vs Market Baseline")
 
-    # Model metrics
     auc_model   = roc_auc_score(y_test, cal_probs)
     brier_model = brier_score_loss(y_test, cal_probs)
     ll_model    = log_loss(y_test, cal_probs)
@@ -392,10 +323,6 @@ def step_discrimination(
 
     return all_pass
 
-
-# ---------------------------------------------------------------------------
-# Step 6 -- Portfolio integration
-# ---------------------------------------------------------------------------
 
 def step_portfolio(
     dataset: SyntheticNBADataset,
@@ -435,7 +362,6 @@ def step_portfolio(
         home_ml["game_id"] + "__ml__" + home_ml["outcome_name"].str.replace(" ", "_")
     )
 
-    # Covariance
     t0 = time.perf_counter()
     cov_est = CovarianceEstimator(n_sim=2_000)
     cov_est.fit(home_ml)
@@ -455,7 +381,6 @@ def step_portfolio(
     ok &= check("Covariance is PSD", float(is_psd), ">=", 1.0,
                 extra="positive semi-definite required for SLSQP")
 
-    # Optimiser
     optimizer = PortfolioOptimizer(
         max_portfolio_fraction=0.20,
         max_single_bet_fraction=0.05,
@@ -482,10 +407,6 @@ def step_portfolio(
     return ok
 
 
-# ---------------------------------------------------------------------------
-# Step 7 -- Risk bridge
-# ---------------------------------------------------------------------------
-
 def step_risk_bridge() -> bool:
     section("7 / 7  -  Risk Bridge Constraint Scaling")
 
@@ -511,7 +432,6 @@ def step_risk_bridge() -> bool:
             f"-={lam:.2f}  bankroll=${bankroll:.0f}"
         ))
 
-    # Monotonicity checks
     ok = True
     ok &= check(
         "port_frac tol1 < tol10",
@@ -532,7 +452,6 @@ def step_risk_bridge() -> bool:
         extra="limited by disposable income",
     )
 
-    # Session stop-loss
     profile = UserRiskProfile(
         liquid_bankroll=1_000.0,
         disposable_income=1_000.0,
@@ -549,10 +468,6 @@ def step_risk_bridge() -> bool:
     )
     return ok
 
-
-# ---------------------------------------------------------------------------
-# Simulated ROI (bonus, non-gating)
-# ---------------------------------------------------------------------------
 
 def step_simulated_roi(
     y_test: pd.Series,
@@ -596,10 +511,6 @@ def step_simulated_roi(
         print(_c(f"\n  Negative ROI at this threshold ({roi:+.2%}) -- adjust edge filter or model.", _YELLOW))
 
 
-# ---------------------------------------------------------------------------
-# Final summary
-# ---------------------------------------------------------------------------
-
 def print_final_summary(results: dict[str, bool], total_elapsed: float) -> bool:
     section("BENCHMARK SUMMARY")
     all_pass = all(results.values())
@@ -635,10 +546,6 @@ def print_final_summary(results: dict[str, bool], total_elapsed: float) -> bool:
     return all_pass
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="NBA Bet Portfolio Engine -- ML benchmark",
@@ -666,7 +573,6 @@ def main() -> None:
 
     results: dict[str, bool] = {}
 
-    # --- 1. Data ---
     ds = step_data(args.seasons, args.games, args.verbose)
     X_train, X_test, y_train, y_test = ds.train_test_split()
     odds_df = ds.odds_dataframe()
@@ -687,7 +593,6 @@ def main() -> None:
     )
     results["1. Data generation"] = True   # if we get here, it passed
 
-    # --- 2. Training ---
     try:
         trainer = step_train(X_train, y_train, args.verbose)
         results["2. Model training"] = True
@@ -696,33 +601,26 @@ def main() -> None:
         results["2. Model training"] = False
         sys.exit(1)
 
-    # --- 3. Raw probs ---
     raw_probs = step_raw_probs(trainer, X_test, y_test)
     results["3. Raw probability output"] = True
 
-    # --- 4. Calibration ---
     calibrator, cal_probs = step_calibration(
         trainer, X_train, y_train, X_test, y_test, raw_probs
     )
     ece_cal = calibrator.ece(cal_probs, y_test.to_numpy())
     results["4. Calibration (ECE)"] = ece_cal <= THRESHOLDS["ece_calibrated"][1]
 
-    # --- 5. Discrimination ---
     discrim_pass = step_discrimination(y_test, cal_probs, market_probs)
     results["5. Discrimination vs market"] = discrim_pass
 
-    # --- 6. Portfolio ---
     portfolio_pass = step_portfolio(ds, cal_probs, y_test)
     results["6. Portfolio integration"] = portfolio_pass
 
-    # --- 7. Risk bridge ---
     risk_pass = step_risk_bridge()
     results["7. Risk bridge"] = risk_pass
 
-    # --- Bonus ROI simulation ---
     step_simulated_roi(y_test, cal_probs, market_probs)
 
-    # --- Summary ---
     total_elapsed = time.perf_counter() - t_start
     all_pass = print_final_summary(results, total_elapsed)
     sys.exit(0 if all_pass else 1)

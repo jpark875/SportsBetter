@@ -1,11 +1,4 @@
-"""
-sports/nba.py
-
-NBA plugin.  History via stats.nba.com LeagueGameLog (league_id "00").
-
-ELO tuning: K=20 with an ~80-point home bonus tracks the NBA's ~59%
-historical home win rate.
-"""
+"""NBA plugin."""
 
 from __future__ import annotations
 

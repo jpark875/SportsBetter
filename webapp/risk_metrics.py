@@ -1,31 +1,5 @@
-"""
-webapp/risk_metrics.py
-
-Turns a settled-bet ledger into the risk-adjusted performance metrics
-that matter for a bettor optimising for *steady* growth rather than
-raw hit rate.
-
-Metrics (per the risk-analysis research):
-
-    ROI              net profit / total staked
-    Win rate         wins / settled bets
-    Sharpe ratio     mean per-bet return / stdev of returns
-                     — reward per unit of *total* volatility
-    Sortino ratio    mean per-bet return / downside deviation
-                     — reward per unit of *downside* volatility; ignores
-                       upside swings, which a bettor doesn't mind
-    Max drawdown     largest peak-to-trough drop of the bankroll curve,
-                     as a fraction of the running peak — the single most
-                     important survival metric
-    Calmar ratio     total return / max drawdown — worst-case efficiency
-
-Per-bet "return" is P&L divided by stake, so a won +150 bet returns
-+1.5 and any loss returns -1.0.  These are unitless and comparable
-across differently-sized wagers.
-
-A ``stability_grade`` folds Sortino and max-drawdown into a single
-plain-language rating so the UI can say something honest without
-demanding the user read four ratios.
+"""Turns a settled-bet ledger into the risk-adjusted performance metrics that matter for a
+bettor optimising for *steady* growth rather than raw hit rate.
 """
 
 from __future__ import annotations
@@ -77,14 +51,7 @@ def _downside_deviation(xs: List[float], target: float = 0.0) -> float:
 
 
 def _max_drawdown(bankroll_curve: List[float]) -> tuple[float, float]:
-    """
-    Largest peak-to-trough decline of a cumulative-P&L curve.
-
-    Returns ``(fraction, dollars)``. The fraction is relative to the
-    running peak *bankroll level*; we anchor the curve at an implied
-    starting bankroll of the total staked so an all-losing start still
-    yields a sane (<100%) percentage rather than dividing by ~zero.
-    """
+    """Largest peak-to-trough decline of a cumulative-P&L curve."""
     if not bankroll_curve:
         return 0.0, 0.0
     peak = bankroll_curve[0]
@@ -129,11 +96,7 @@ def _grade(sortino: float, max_dd: float, n: int) -> tuple[str, str]:
 
 
 def compute_metrics(settled_bets: List[Dict]) -> RiskMetrics:
-    """
-    Compute the full metric set from settled (won/lost) bets, oldest-first.
-
-    Each bet dict needs ``stake``, ``pnl``, and ``status``.
-    """
+    """Compute the full metric set from settled (won/lost) bets, oldest-first."""
     if not settled_bets:
         return RiskMetrics()
 
@@ -197,12 +160,7 @@ def compute_metrics(settled_bets: List[Dict]) -> RiskMetrics:
 
 
 def bankroll_curve(settled_bets: List[Dict]) -> List[Dict]:
-    """
-    Cumulative-P&L series for charting, oldest-first.
-
-    Returns a list of ``{"n": index, "pnl": cumulative_pnl}`` points,
-    starting at the zero point before any bet settled.
-    """
+    """Cumulative-P&L series for charting, oldest-first."""
     points = [{"n": 0, "pnl": 0.0}]
     cumulative = 0.0
     for i, bet in enumerate(settled_bets, start=1):

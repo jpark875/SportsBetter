@@ -1,28 +1,5 @@
-"""
-risk_bridge/risk_manager.py
-
-Translates the user's personal financial parameters into hard portfolio
-constraints that are passed directly to the optimiser.
-
-Design philosophy
------------------
-The "risk bridge" exists because the portfolio optimiser alone does not
-know *who* is using it.  A professional bettor with a $100,000 bankroll
-and a volatility tolerance of 9 should receive very different constraints
-than a casual bettor with $500 and a tolerance of 2, even if the
-underlying odds are identical.
-
-Three-layer constraint system
-------------------------------
-1. **Drawdown limit** — derived from ``volatility_tolerance``:
-   tolerance 1 → max 5 % drawdown, 10 → 30 %.
-2. **Wager ceiling** — individual bet cap tied to disposable income.
-3. **Session stop-loss** — real-time trip-wire.  If accumulated losses in
-   the current session exceed the session limit, ``RiskManager.is_session_live``
-   returns ``False`` and the main loop should abort further betting.
-
-The class also maintains a simple session ledger so P&L can be tracked
-across multiple ``record_result`` calls within the same run.
+"""Translates the user's personal financial parameters into hard portfolio constraints that
+are passed directly to the optimiser.
 """
 
 from __future__ import annotations
@@ -31,7 +8,6 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 from config.settings import (
@@ -44,17 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class RiskManager:
-    """
-    Applies user financial constraints to the portfolio optimiser parameters.
-
-    Parameters
-    ----------
-    profile : UserRiskProfile
-        User's financial and risk-tolerance configuration.
-    session_stop_loss_pct : float, optional
-        Fraction of effective bankroll that, when lost in a single session,
-        triggers a hard stop.  Defaults to ``max_drawdown_pct * 0.5``.
-    """
+    """Applies user financial constraints to the portfolio optimiser parameters."""
 
     def __init__(
         self,
@@ -80,25 +46,9 @@ class RiskManager:
             self.session_stop_loss_pct * 100,
         )
 
-    # ------------------------------------------------------------------
-    # Constraint derivation
-    # ------------------------------------------------------------------
 
     def get_portfolio_constraints(self) -> Tuple[float, float, float, float]:
-        """
-        Derive the four key optimiser parameters from the user's risk profile.
-
-        Returns
-        -------
-        tuple[float, float, float, float]
-            ``(max_portfolio_fraction, max_single_bet_fraction,
-               risk_scaling, effective_bankroll)``
-
-            * ``max_portfolio_fraction`` — total fraction of bankroll to risk
-            * ``max_single_bet_fraction`` — max fraction on any single bet
-            * ``risk_scaling`` — lambda for the quadratic covariance penalty
-            * ``effective_bankroll`` — dollar amount available for wagering
-        """
+        """Derive the four key optimiser parameters from the user's risk profile."""
         tol = self.profile.volatility_tolerance  # 1–10
 
         # Scale max portfolio exposure linearly with tolerance
@@ -128,26 +78,7 @@ class RiskManager:
     def apply_constraints_to_allocation(
         self, allocation_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """
-        Post-process an allocation DataFrame to enforce absolute dollar caps.
-
-        Specifically:
-        * Each individual ``wager_amount`` is capped at
-          ``max_single_bet_fraction * effective_bankroll``.
-        * The total ``wager_amount`` is capped at
-          ``max_portfolio_fraction * effective_bankroll``.
-        * Any bet whose wager drops below $1.00 is zeroed out.
-
-        Parameters
-        ----------
-        allocation_df : pd.DataFrame
-            Output of :meth:`~portfolio_manager.optimizer.PortfolioOptimizer.optimise`.
-
-        Returns
-        -------
-        pd.DataFrame
-            Modified allocation table.
-        """
+        """Post-process an allocation DataFrame to enforce absolute dollar caps."""
         max_port_frac, max_single, _, bankroll = self.get_portfolio_constraints()
         df = allocation_df.copy()
 
@@ -160,7 +91,6 @@ class RiskManager:
             scale = port_cap / total
             df["wager_amount"] = (df["wager_amount"] * scale).round(2)
 
-        # Re-derive fractions
         df["alloc_fraction"] = df["wager_amount"] / bankroll if bankroll > 0 else 0.0
 
         # Zero out bets below minimum threshold
@@ -168,9 +98,6 @@ class RiskManager:
 
         return df
 
-    # ------------------------------------------------------------------
-    # Session ledger
-    # ------------------------------------------------------------------
 
     def record_result(
         self,
@@ -179,24 +106,7 @@ class RiskManager:
         outcome: str,
         price: float,
     ) -> float:
-        """
-        Record the outcome of a completed bet and return the P&L.
-
-        Parameters
-        ----------
-        bet_id : str
-        wager_amount : float
-            Amount wagered in dollars.
-        outcome : str
-            ``"win"`` or ``"loss"``.
-        price : float
-            American odds at the time of the wager.
-
-        Returns
-        -------
-        float
-            Net profit/loss for this bet.
-        """
+        """Record the outcome of a completed bet and return the P&L."""
         if outcome.lower() == "win":
             if price >= 100:
                 pnl = wager_amount * (price / 100.0)
@@ -226,12 +136,7 @@ class RiskManager:
 
     @property
     def is_session_live(self) -> bool:
-        """
-        ``True`` if the session is still within acceptable loss limits.
-
-        Returns ``False`` once cumulative losses exceed the session stop-loss
-        threshold, signalling that the main loop should halt.
-        """
+        """``True`` if the session is still within acceptable loss limits."""
         bankroll = self.profile.effective_bankroll
         if bankroll <= 0:
             return False
@@ -246,14 +151,7 @@ class RiskManager:
         return True
 
     def session_report(self) -> pd.DataFrame:
-        """
-        Return the full session ledger as a DataFrame.
-
-        Returns
-        -------
-        pd.DataFrame
-            Columns: ``bet_id, timestamp, wager_amount, outcome, price, pnl``.
-        """
+        """Return the full session ledger as a DataFrame."""
         if not self._session_ledger:
             return pd.DataFrame(columns=[
                 "bet_id", "timestamp", "wager_amount", "outcome", "price", "pnl"

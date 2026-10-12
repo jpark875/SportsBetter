@@ -1,8 +1,4 @@
-"""Shared fixtures.
-
-LightGBM on the tiny datasets used here is far slower with its default thread pool than
-with one thread, so pin it before any test imports the library.
-"""
+"""Shared fixtures."""
 
 from __future__ import annotations
 
