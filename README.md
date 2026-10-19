@@ -23,9 +23,10 @@ plugin.
 6. [Adding a new sport](#adding-a-new-sport)
 7. [Risk analysis](#risk-analysis)
 8. [Parlays vs. straight bets](#parlays-vs-straight-bets)
-9. [Configuration](#configuration)
-10. [Project structure](#project-structure)
-11. [Disclaimer](#disclaimer)
+9. [Prediction-market whale tracker](#prediction-market-whale-tracker)
+10. [Configuration](#configuration)
+11. [Project structure](#project-structure)
+12. [Disclaimer](#disclaimer)
 
 ---
 
@@ -225,6 +226,52 @@ breaks down), and gives a blunt verdict — **parlay**, **bet straight**, or
 
 ---
 
+## Prediction-market whale tracker
+
+`whale_tracker/` watches **Polymarket** and **Kalshi** for unusually large
+trades and alerts you as they happen. It uses only public, keyless endpoints:
+Polymarket's Data API (`data-api.polymarket.com/trades`, `/v1/leaderboard`) and
+Kalshi's market-data API (`api.elections.kalshi.com/trade-api/v2/markets/trades`).
+
+```bash
+python -m whale_tracker test-alert                 # check your alert channels
+python -m whale_tracker import-leaderboard --top 20  # follow Polymarket's top traders
+python -m whale_tracker follow 0xabc… --label "sharp"
+python -m whale_tracker watch                      # poll every 30s, alert on whales
+python -m whale_tracker recent                     # what fired lately
+```
+
+**What counts as a whale**
+
+| Alert | Platform | Rule |
+|---|---|---|
+| Whale trade | both | one fill ≥ `WHALE_MIN_USD` (default $10k) |
+| Whale accumulating | Polymarket | one wallet's smaller fills on the same market and side sum to the threshold within an hour (catches split orders) |
+| Large order (sweep) | Kalshi | fills on the same market and side within 10s sum to the threshold, which most likely means one order walked the book |
+| Followed wallet traded | Polymarket | a wallet you follow trades ≥ `WHALE_WATCH_MIN_USD` (default $1k) |
+
+Each alert says why it fired and adds context: longshot buys (≤15¢, with the
+payout multiple), heavy-favourite buys (≥90¢), and brand-new Polymarket
+wallets (fewer than 5 trades on record), a common sign of someone trading on
+fresh information.
+
+**Polymarket vs. Kalshi.** Polymarket settles on-chain, so every trade carries
+the trader's wallet and whales can be followed individually. Kalshi's public
+feed is anonymous: it shows size, price and time but not who traded, so Kalshi
+alerts are about size only and sweeps are an inference.
+
+**Alert channels.** The terminal always gets alerts. Set any of
+`WHALE_DISCORD_WEBHOOK_URL`, `WHALE_SLACK_WEBHOOK_URL`, `WHALE_NTFY_TOPIC`
+(free phone push via the [ntfy](https://ntfy.sh) app) or
+`WHALE_TELEGRAM_BOT_TOKEN` + `WHALE_TELEGRAM_CHAT_ID` to fan out further. See
+`.env.example` for every setting.
+
+Seen trades, alerts, followed wallets and poll cursors live in SQLite
+(`data/whales.db`), so restarts never re-send an alert. A cold start only
+looks back 15 minutes (`WHALE_LOOKBACK_SECONDS`).
+
+---
+
 ## Configuration
 
 All configuration is via `.env` (copied from `.env.example`):
@@ -265,6 +312,11 @@ webapp/
 scripts/
   train_sport.py        unified per-sport trainer
 data_pipeline/          odds client + raw stats clients
+whale_tracker/
+  sources/              Polymarket + Kalshi public-API clients
+  detector.py           whale rules: large trade, accumulation, sweep, followed wallet
+  watcher.py  store.py  poll loop + SQLite (dedupe, alerts, watchlist)
+  notify.py  cli.py     terminal / Discord / Slack / ntfy / Telegram; CLI
 tests/                  pytest suite
 ```
 

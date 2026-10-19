@@ -13,7 +13,7 @@ else
     ACTIVATE := $(VENV)/bin/activate
 endif
 
-.PHONY: help install env test coverage benchmark train run clean
+.PHONY: help install env test coverage benchmark train run whales clean
 
 # ---- Meta ----
 
@@ -26,6 +26,7 @@ help:
 	@echo "  make benchmark   Run ML efficiency benchmark (no API keys required)"
 	@echo "  make train       Retrain model on cached data and save artefacts"
 	@echo "  make run         Launch the engine interactively"
+	@echo "  make whales      Watch Polymarket and Kalshi for whale trades"
 	@echo "  make clean       Remove __pycache__, .pytest_cache, artefacts"
 	@echo ""
 
@@ -63,6 +64,9 @@ train:
 
 run:
 	$(PYTHON) main.py
+
+whales:
+	$(PYTHON) -m whale_tracker watch
 
 # ---- Cleanup ----
 
