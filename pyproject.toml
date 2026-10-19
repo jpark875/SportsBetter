@@ -44,10 +44,11 @@ dev = [
 [project.scripts]
 nba-engine = "main:run"
 whale-tracker = "whale_tracker.cli:main"
+copy-trader = "copy_trader.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["config*", "data_pipeline*", "predictive_model*", "portfolio_manager*", "risk_bridge*", "whale_tracker*"]
+include = ["config*", "data_pipeline*", "predictive_model*", "portfolio_manager*", "risk_bridge*", "whale_tracker*", "copy_trader*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "scripts"]
@@ -56,7 +57,7 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 
 [tool.coverage.run]
-source = ["config", "data_pipeline", "predictive_model", "portfolio_manager", "risk_bridge", "whale_tracker"]
+source = ["config", "data_pipeline", "predictive_model", "portfolio_manager", "risk_bridge", "whale_tracker", "copy_trader"]
 omit = ["tests/*", "scripts/*", "main.py"]
 
 [tool.coverage.report]

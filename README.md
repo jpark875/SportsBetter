@@ -24,9 +24,10 @@ plugin.
 7. [Risk analysis](#risk-analysis)
 8. [Parlays vs. straight bets](#parlays-vs-straight-bets)
 9. [Prediction-market whale tracker](#prediction-market-whale-tracker)
-10. [Configuration](#configuration)
-11. [Project structure](#project-structure)
-12. [Disclaimer](#disclaimer)
+10. [Polymarket copy trader](#polymarket-copy-trader)
+11. [Configuration](#configuration)
+12. [Project structure](#project-structure)
+13. [Disclaimer](#disclaimer)
 
 ---
 
@@ -272,6 +273,67 @@ looks back 15 minutes (`WHALE_LOOKBACK_SECONDS`).
 
 ---
 
+## Polymarket copy trader
+
+`copy_trader/` is a separate program from the whale tracker. It finds
+Polymarket traders with **high win rates and large profits**, watches what
+they hold, and when they buy or sell it tells you the exact order to place to
+match them, sized to your bankroll. It only gives signals: it never touches
+your account or places orders.
+
+```bash
+python -m copy_trader discover --candidates 50        # score the all-time leaderboard
+python -m copy_trader discover --follow 10            # ...and follow the 10 best
+python -m copy_trader score 0xabc…                    # one wallet's scorecard
+python -m copy_trader --bankroll 2000 watch           # alert on every move they make
+python -m copy_trader --bankroll 2000 open            # their current positions still near entry price
+python -m copy_trader signals                         # recent signals
+```
+
+**Picking traders.** Each candidate's most recent 500 resolved positions are
+scored (newest first, not biggest wins first, so the win rate isn't
+inflated). By default a trader qualifies with at least 30 resolved positions,
+a win rate of 60% or more, $50k+ profit, activity in the last 30 days, and an
+**edge** of at least 5 points. Edge is the win rate minus the average price
+paid. Someone who only buys 95¢ favourites wins 95% of the time and makes
+almost nothing; edge filters them out. Ranking uses the 95%-confidence lower
+bound of the win rate, so 9-for-10 doesn't beat 90-for-100. Traders are
+re-scored daily and stop being copied if they fall below the bar (wallets you
+`follow` by hand are still copied, with a warning).
+
+**What a signal looks like**
+
+```
+COPY ▸ BUY 232.55 Yes @ limit 43¢ (≈$100.00)
+   Will the Fed cut rates in December?
+   Market now 42¢ · sharp opened $38,400 at ~41¢ (6.0% of their portfolio)
+   Trader: sharp: 68% win rate over 214 resolved, +11 pts vs prices paid, $1,200,000 profit · https://polymarket.com/profile/0x…
+   capped at 5% of your bankroll (they put 6% of their portfolio in)
+   1 other followed trader also holds Yes
+   https://polymarket.com/event/…
+```
+
+- **OPEN / ADD**: buy. You put the same share of your bankroll in as they put
+  of their portfolio (`COPY_SCALE` scales that), capped at 5% per position. The
+  limit is the market price plus 1¢.
+- **TRIM / EXIT**: sell the same fraction they sold. Shares are worked out
+  from the buys it told you to make.
+- **WAIT**: they bought, but the price has run more than 5¢ past their entry,
+  or it's above 97¢, or your copy would be under $1. It tells you the most to
+  pay.
+- Markets that resolve are payouts, not sells, so they never trigger an exit.
+  A failed API call never reads as a sell-off either.
+
+Signals go to the terminal and optionally Discord, Slack, ntfy (phone push) or
+Telegram via the `COPY_*` settings in `.env.example`.
+
+**Caveats.** You always enter after the trader and at a worse price; only
+their positions of $500+ are tracked; portfolio weight uses their open
+positions, not their uninvested cash; past win rates don't guarantee future
+ones. Check that Polymarket is available where you live.
+
+---
+
 ## Configuration
 
 All configuration is via `.env` (copied from `.env.example`):
@@ -317,6 +379,12 @@ whale_tracker/
   detector.py           whale rules: large trade, accumulation, sweep, followed wallet
   watcher.py  store.py  poll loop + SQLite (dedupe, alerts, watchlist)
   notify.py  cli.py     terminal / Discord / Slack / ntfy / Telegram; CLI
+copy_trader/
+  polymarket.py         leaderboard, open + closed positions
+  scoring.py            win rate, edge vs price paid, Wilson bound, qualification
+  signals.py            position diffs → OPEN/ADD/TRIM/EXIT/WAIT orders, sizing
+  watcher.py  store.py  poll loop + SQLite (snapshots, copied book, signal log)
+  notify.py  cli.py     alert channels; CLI
 tests/                  pytest suite
 ```
 
